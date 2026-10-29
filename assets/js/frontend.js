@@ -1,0 +1,164 @@
+document.addEventListener('DOMContentLoaded', function () {
+    const serviceSelect = document.getElementById('ross-service-select');
+    const dateInput = document.getElementById('ross-booking-date');
+    const slotsContainer = document.getElementById('ross-slots-container');
+    const slotsList = document.getElementById('ross-slots-list');
+    const bookingForm = document.getElementById('ross-booking-form');
+    const selectedSlotInput = document.getElementById('ross-selected-slot');
+    const messageContainer = document.getElementById('ross-booking-message');
+
+    if (!serviceSelect || !dateInput) {
+        return;
+    }
+
+    // Set min date to today
+    const today = new Date().toISOString().split('T')[0];
+    dateInput.setAttribute('min', today);
+
+    function showMessage(msg, isSuccess = true) {
+        messageContainer.style.display = 'block';
+        messageContainer.className = isSuccess ? 'ross-message ross-success' : 'ross-message ross-error';
+        messageContainer.textContent = msg;
+    }
+
+    function clearMessage() {
+        messageContainer.style.display = 'none';
+        messageContainer.textContent = '';
+    }
+
+    function fetchAvailableSlots() {
+        const serviceId = serviceSelect.value;
+        const bookingDate = dateInput.value;
+
+        if (!serviceId || !bookingDate) {
+            slotsContainer.style.display = 'none';
+            bookingForm.style.display = 'none';
+            return;
+        }
+
+        clearMessage();
+        slotsList.innerHTML = '<p class="ross-loading">Loading available slots...</p>';
+        slotsContainer.style.display = 'block';
+        bookingForm.style.display = 'none';
+        selectedSlotInput.value = '';
+
+        const params = new URLSearchParams({
+            action: 'ross_get_available_slots',
+            security: rossBookingData.nonce,
+            service_id: serviceId,
+            booking_date: bookingDate
+        });
+
+        fetch(rossBookingData.ajax_url + '?' + params.toString(), {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(res => {
+            if (res.success && res.data && res.data.slots) {
+                renderSlots(res.data.slots);
+            } else {
+                slotsList.innerHTML = '<p class="ross-error">' + (res.data && res.data.message ? res.data.message : 'Error fetching slots.') + '</p>';
+            }
+        })
+        .catch(err => {
+            slotsList.innerHTML = '<p class="ross-error">Network error occurred. Please try again.</p>';
+        });
+    }
+
+    function renderSlots(slots) {
+        slotsList.innerHTML = '';
+        if (slots.length === 0) {
+            slotsList.innerHTML = '<p>No available slots for this date.</p>';
+            return;
+        }
+
+        const grid = document.createElement('div');
+        grid.className = 'ross-slots-grid';
+
+        slots.forEach(slotObj => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'ross-slot-btn' + (slotObj.available ? '' : ' disabled');
+            btn.textContent = slotObj.time_slot;
+            btn.disabled = !slotObj.available;
+
+            if (slotObj.available) {
+                btn.addEventListener('click', function () {
+                    document.querySelectorAll('.ross-slot-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    selectedSlotInput.value = slotObj.time_slot;
+                    bookingForm.style.display = 'block';
+                    bookingForm.scrollIntoView({ behavior: 'smooth' });
+                });
+            }
+
+            grid.appendChild(btn);
+        });
+
+        slotsList.appendChild(grid);
+    }
+
+    serviceSelect.addEventListener('change', fetchAvailableSlots);
+    dateInput.addEventListener('change', fetchAvailableSlots);
+
+    if (bookingForm) {
+        bookingForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            clearMessage();
+
+            const serviceId = serviceSelect.value;
+            const bookingDate = dateInput.value;
+            const timeSlot = selectedSlotInput.value;
+            const clientName = document.getElementById('ross-client-name').value.trim();
+            const clientEmail = document.getElementById('ross-client-email').value.trim();
+
+            if (!serviceId || !bookingDate || !timeSlot || !clientName || !clientEmail) {
+                showMessage('Please fill in all fields.', false);
+                return;
+            }
+
+            const submitBtn = bookingForm.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+
+            const formData = new URLSearchParams();
+            formData.append('action', 'ross_submit_booking');
+            formData.append('security', rossBookingData.nonce);
+            formData.append('service_id', serviceId);
+            formData.append('booking_date', bookingDate);
+            formData.append('time_slot', timeSlot);
+            formData.append('client_name', clientName);
+            formData.append('client_email', clientEmail);
+
+            fetch(rossBookingData.ajax_url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: formData.toString()
+            })
+            .then(response => response.json())
+            .then(res => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirm Booking';
+
+                if (res.success) {
+                    showMessage(res.data.message || 'Booking successful!', true);
+                    bookingForm.reset();
+                    bookingForm.style.display = 'none';
+                    fetchAvailableSlots();
+                } else {
+                    showMessage(res.data.message || 'Booking failed. Please try again.', false);
+                }
+            })
+            .catch(err => {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Confirm Booking';
+                showMessage('A network error occurred. Please try again.', false);
+            });
+        });
+    }
+});

@@ -1,0 +1,105 @@
+.ross-booking-container {
+    max-width: 600px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.ross-form-group {
+    margin-bottom: 15px;
+}
+
+.ross-form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #333;
+}
+
+.ross-form-group select,
+.ross-form-group input[type="date"],
+.ross-form-group input[type="text"],
+.ross-form-group input[type="email"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+.ross-slots-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.ross-slot-btn {
+    padding: 10px;
+    border: 1px solid #0073aa;
+    background: #f7f9fa;
+    color: #0073aa;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.ross-slot-btn:hover:not(.disabled) {
+    background: #0073aa;
+    color: #fff;
+}
+
+.ross-slot-btn.selected {
+    background: #005177;
+    color: #fff;
+    border-color: #005177;
+}
+
+.ross-slot-btn.disabled {
+    background: #e2e8f0;
+    color: #a0aec0;
+    border-color: #cbd5e0;
+    cursor: not-allowed;
+}
+
+.ross-btn-submit {
+    background: #2271b1;
+    color: #fff;
+    border: none;
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    width: 100%;
+    font-weight: bold;
+}
+
+.ross-btn-submit:hover {
+    background: #135e96;
+}
+
+.ross-message {
+    padding: 12px;
+    margin-top: 15px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.ross-success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.ross-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
