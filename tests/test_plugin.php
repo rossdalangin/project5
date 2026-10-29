@@ -53,13 +53,25 @@ class MockWPDB {
 
 	public function get_var( $query ) {
 		$this->last_query = $query;
-		$count = 0;
-		foreach ( $this->rows as $row ) {
-			if ( strpos( $query, $row['service_id'] ) !== false && strpos( $query, $row['booking_date'] ) !== false && strpos( $query, $row['time_slot'] ) !== false && $row['status'] !== 'cancelled' ) {
-				$count++;
+		if ( strpos( $query, 'COUNT(*)' ) !== false ) {
+			if ( strpos( $query, "status = 'pending'" ) !== false ) {
+				$cnt = 0;
+				foreach ( $this->rows as $r ) { if ( $r['status'] === 'pending' ) $cnt++; }
+				return $cnt;
 			}
+			if ( strpos( $query, "status = 'approved'" ) !== false ) {
+				$cnt = 0;
+				foreach ( $this->rows as $r ) { if ( $r['status'] === 'approved' ) $cnt++; }
+				return $cnt;
+			}
+			if ( strpos( $query, 'booking_date =' ) !== false ) {
+				$cnt = 0;
+				foreach ( $this->rows as $r ) { if ( $r['booking_date'] === date('Y-m-d') ) $cnt++; }
+				return $cnt;
+			}
+			return count( $this->rows );
 		}
-		return $count;
+		return 0;
 	}
 
 	public function insert( $table, $data, $format = null ) {
@@ -81,6 +93,16 @@ class MockWPDB {
 		return 0;
 	}
 
+	public function get_row( $query ) {
+		$this->last_query = $query;
+		foreach ( $this->rows as $row ) {
+			if ( strpos( $query, (string) $row['id'] ) !== false ) {
+				return (object) $row;
+			}
+		}
+		return null;
+	}
+
 	public function get_results( $query ) {
 		$this->last_query = $query;
 		$objs = array();
@@ -97,6 +119,7 @@ $wpdb = new MockWPDB();
 // Mock WP core functions
 $actions = array();
 $shortcodes = array();
+$sent_emails = array();
 
 function add_action( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	global $actions;
@@ -113,6 +136,17 @@ function add_shortcode( $tag, $callback ) {
 	$shortcodes[ $tag ] = $callback;
 }
 
+function get_bloginfo( $show = '' ) { return 'Test Site'; }
+function wp_mail( $to, $subject, $message, $headers = '', $attachments = array() ) {
+	global $sent_emails;
+	$sent_emails[] = array(
+		'to'      => $to,
+		'subject' => $subject,
+		'message' => $message,
+	);
+	return true;
+}
+
 function esc_html( $text ) { return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' ); }
 function esc_attr( $text ) { return htmlspecialchars( (string) $text, ENT_QUOTES, 'UTF-8' ); }
 function esc_url( $url ) { return $url; }
@@ -120,6 +154,11 @@ function esc_html_e( $text, $domain = 'default' ) { echo esc_html( $text ); }
 function esc_html__( $text, $domain = 'default' ) { return esc_html( $text ); }
 function __( $text, $domain = 'default' ) { return $text; }
 function wp_kses_post( $text ) { return $text; }
+function selected( $selected, $current = true, $echo = true ) {
+	$result = ( (string) $selected === (string) $current ) ? "selected='selected'" : '';
+	if ( $echo ) echo $result;
+	return $result;
+}
 
 function sanitize_text_field( $str ) {
 	return trim( strip_tags( (string) $str ) );
@@ -226,8 +265,8 @@ try {
 }
 echo "PASSED\n";
 
-// Test 3: Submit Booking via AJAX
-echo "Test 3: ross_submit_booking... ";
+// Test 3: Submit Booking & Verify Email Trigger
+echo "Test 3: ross_submit_booking & wp_mail trigger... ";
 $_POST['security'] = 'valid_nonce';
 $_POST['service_id'] = 'service-1';
 $_POST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
@@ -239,6 +278,8 @@ try {
 	ross_submit_booking();
 } catch ( Exception $e ) {
 	assert( strpos( $e->getMessage(), 'JSON_SUCCESS' ) !== false, 'Booking submitted successfully' );
+	assert( count( $sent_emails ) === 1, 'Confirmation email dispatched' );
+	assert( strpos( $sent_emails[0]['subject'], 'Appointment Request Received' ) !== false, 'Email subject correct' );
 }
 echo "PASSED\n";
 
@@ -288,24 +329,26 @@ try {
 }
 echo "PASSED\n";
 
-// Test 7: Admin Dashboard Page render
-echo "Test 7: Admin Dashboard Page render... ";
+// Test 7: Admin Dashboard Page render with analytics
+echo "Test 7: Admin Dashboard Page render & analytics... ";
 ob_start();
 ross_admin_appointments_page();
 $output = ob_get_clean();
-assert( strpos( $output, 'Appointment Bookings Directory' ) !== false, 'Admin page title rendered' );
+assert( strpos( $output, 'Appointment Bookings Directory Pro' ) !== false, 'Admin Pro page title rendered' );
+assert( strpos( $output, 'Total Bookings' ) !== false, 'Analytics card rendered' );
 assert( strpos( $output, 'John Doe' ) !== false, 'Booked client name rendered in admin table' );
 echo "PASSED\n";
 
-// Test 8: Admin Approve Action
-echo "Test 8: Admin Approve Action... ";
+// Test 8: Admin Approve Action & Approval Email
+echo "Test 8: Admin Approve Action & Email... ";
 $_GET['action'] = 'approve';
 $_GET['booking_id'] = 2;
 ob_start();
 ross_admin_appointments_page();
 $admin_out = ob_get_clean();
-assert( strpos( $admin_out, 'Booking approved successfully.' ) !== false, 'Approval message displayed' );
-assert( strpos( $admin_out, 'Approved' ) !== false, 'Status updated to Approved' );
+assert( strpos( $admin_out, 'Booking approved successfully' ) !== false, 'Approval message displayed' );
+assert( count( $sent_emails ) === 2, 'Approval email dispatched' );
+assert( strpos( $sent_emails[1]['subject'], 'Appointment Approved' ) !== false, 'Approval email subject correct' );
 echo "PASSED\n";
 
 // Cleanup mock wp-admin directory

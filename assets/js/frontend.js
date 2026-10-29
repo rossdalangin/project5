@@ -21,6 +21,47 @@ document.addEventListener('DOMContentLoaded', function () {
         messageContainer.textContent = msg;
     }
 
+    function renderConfirmationCard(data) {
+        messageContainer.style.display = 'block';
+        messageContainer.className = 'ross-message ross-success ross-confirmation-card';
+        messageContainer.textContent = '';
+
+        const title = document.createElement('h3');
+        title.style.margin = '0 0 10px 0';
+        title.textContent = '🎉 Appointment Confirmed!';
+
+        const desc = document.createElement('p');
+        desc.style.margin = '0 0 15px 0';
+        desc.textContent = 'Your booking request has been submitted successfully and is pending approval.';
+
+        const detailsList = document.createElement('ul');
+        detailsList.style.listStyle = 'none';
+        detailsList.style.padding = '0';
+        detailsList.style.margin = '0 0 15px 0';
+
+        const fields = [
+            { label: 'Booking Reference', val: '#' + data.booking_id },
+            { label: 'Client Name', val: data.client_name },
+            { label: 'Service', val: data.service_name },
+            { label: 'Date', val: data.booking_date },
+            { label: 'Time Slot', val: data.time_slot }
+        ];
+
+        fields.forEach(f => {
+            const li = document.createElement('li');
+            li.style.padding = '4px 0';
+            const bold = document.createElement('strong');
+            bold.textContent = f.label + ': ';
+            li.appendChild(bold);
+            li.appendChild(document.createTextNode(f.val));
+            detailsList.appendChild(li);
+        });
+
+        messageContainer.appendChild(title);
+        messageContainer.appendChild(desc);
+        messageContainer.appendChild(detailsList);
+    }
+
     function clearMessage() {
         messageContainer.style.display = 'none';
         messageContainer.textContent = '';
@@ -158,20 +199,20 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(res => {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Confirm Booking';
+                submitBtn.textContent = 'Confirm Appointment Booking';
 
-                if (res.success) {
-                    showMessage(res.data.message || 'Booking successful!', true);
+                if (res.success && res.data) {
+                    renderConfirmationCard(res.data);
                     bookingForm.reset();
                     bookingForm.style.display = 'none';
                     fetchAvailableSlots();
                 } else {
-                    showMessage(res.data.message || 'Booking failed. Please try again.', false);
+                    showMessage(res.data && res.data.message ? res.data.message : 'Booking failed. Please try again.', false);
                 }
             })
             .catch(err => {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Confirm Booking';
+                submitBtn.textContent = 'Confirm Appointment Booking';
                 showMessage('A network error occurred. Please try again.', false);
             });
         });
