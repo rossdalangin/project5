@@ -152,6 +152,14 @@ function ross_booking_shortcode( $atts ) {
 add_shortcode( 'appointment_booking', 'ross_booking_shortcode' );
 
 /**
+ * Helper: Validate Date (YYYY-MM-DD)
+ */
+function ross_is_valid_date( $date_string ) {
+	$d = DateTime::createFromFormat( 'Y-m-d', $date_string );
+	return $d && $d->format( 'Y-m-d' ) === $date_string;
+}
+
+/**
  * AJAX Callback: Get Available Slots
  */
 function ross_get_available_slots() {
@@ -162,6 +170,22 @@ function ross_get_available_slots() {
 
 	if ( empty( $service_id ) || empty( $booking_date ) ) {
 		wp_send_json_error( array( 'message' => __( 'Missing required parameters.', 'appointment-booking-directory' ) ) );
+	}
+
+	// Strict Service ID Validation
+	$valid_services = array_keys( ross_get_services() );
+	if ( ! in_array( $service_id, $valid_services, true ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid service selected.', 'appointment-booking-directory' ) ) );
+	}
+
+	// Strict Date Validation
+	if ( ! ross_is_valid_date( $booking_date ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid date format provided.', 'appointment-booking-directory' ) ) );
+	}
+
+	$today = current_time( 'Y-m-d' );
+	if ( $booking_date < $today ) {
+		wp_send_json_error( array( 'message' => __( 'Booking date cannot be in the past.', 'appointment-booking-directory' ) ) );
 	}
 
 	global $wpdb;
@@ -210,6 +234,28 @@ function ross_submit_booking() {
 
 	if ( empty( $service_id ) || empty( $booking_date ) || empty( $time_slot ) || empty( $client_name ) || empty( $client_email ) ) {
 		wp_send_json_error( array( 'message' => __( 'All fields are required.', 'appointment-booking-directory' ) ) );
+	}
+
+	// Strict Service ID Validation
+	$valid_services = array_keys( ross_get_services() );
+	if ( ! in_array( $service_id, $valid_services, true ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid service selected.', 'appointment-booking-directory' ) ) );
+	}
+
+	// Strict Date Validation
+	if ( ! ross_is_valid_date( $booking_date ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid date format provided.', 'appointment-booking-directory' ) ) );
+	}
+
+	$today = current_time( 'Y-m-d' );
+	if ( $booking_date < $today ) {
+		wp_send_json_error( array( 'message' => __( 'Booking date cannot be in the past.', 'appointment-booking-directory' ) ) );
+	}
+
+	// Strict Time Slot Validation
+	$allowed_slots = ross_get_default_time_slots();
+	if ( ! in_array( $time_slot, $allowed_slots, true ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid time slot selected.', 'appointment-booking-directory' ) ) );
 	}
 
 	if ( ! is_email( $client_email ) ) {
@@ -337,7 +383,7 @@ function ross_admin_appointments_page() {
 		<h1 class="wp-heading-inline"><?php esc_html_e( 'Appointment Bookings Directory', 'appointment-booking-directory' ); ?></h1>
 		<hr class="wp-header-end">
 
-		<?php echo $notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+		<?php echo wp_kses_post( $notice ); ?>
 
 		<table class="wp-list-table widefat fixed striped">
 			<thead>

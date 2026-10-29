@@ -26,7 +26,6 @@ class MockWPDB {
 	}
 
 	public function prepare( $query, ...$args ) {
-		// If $args[0] is array (e.g. $wpdb->prepare( $query, $args_array ))
 		if ( isset( $args[0] ) && is_array( $args[0] ) ) {
 			$args = $args[0];
 		}
@@ -120,6 +119,7 @@ function esc_url( $url ) { return $url; }
 function esc_html_e( $text, $domain = 'default' ) { echo esc_html( $text ); }
 function esc_html__( $text, $domain = 'default' ) { return esc_html( $text ); }
 function __( $text, $domain = 'default' ) { return $text; }
+function wp_kses_post( $text ) { return $text; }
 
 function sanitize_text_field( $str ) {
 	return trim( strip_tags( (string) $str ) );
@@ -175,7 +175,12 @@ function wp_send_json_error( $data = null ) {
 	throw new Exception( 'JSON_ERROR: ' . json_encode( $data ) );
 }
 
-function current_time( $type ) { return date( 'Y-m-d H:i:s' ); }
+function current_time( $type ) {
+	if ( $type === 'Y-m-d' ) {
+		return date( 'Y-m-d' );
+	}
+	return date( 'Y-m-d H:i:s' );
+}
 function wp_enqueue_style() {}
 function wp_enqueue_script() {}
 function wp_localize_script() {}
@@ -209,7 +214,7 @@ echo "PASSED\n";
 echo "Test 2: ross_get_available_slots... ";
 $_REQUEST['security'] = 'valid_nonce';
 $_REQUEST['service_id'] = 'service-1';
-$_REQUEST['booking_date'] = '2026-11-01';
+$_REQUEST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
 
 try {
 	ross_get_available_slots();
@@ -225,7 +230,7 @@ echo "PASSED\n";
 echo "Test 3: ross_submit_booking... ";
 $_POST['security'] = 'valid_nonce';
 $_POST['service_id'] = 'service-1';
-$_POST['booking_date'] = '2026-11-01';
+$_POST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
 $_POST['time_slot'] = '09:00 AM';
 $_POST['client_name'] = 'John Doe';
 $_POST['client_email'] = 'john@example.com';
@@ -257,8 +262,34 @@ try {
 }
 echo "PASSED\n";
 
-// Test 6: Admin Dashboard Page
-echo "Test 6: Admin Dashboard Page render... ";
+// Test 6: Strict validation testing (invalid service, invalid slot, past date)
+echo "Test 6: Strict validation checks... ";
+$_POST['service_id'] = 'invalid-service';
+try {
+	ross_submit_booking();
+} catch ( Exception $e ) {
+	assert( strpos( $e->getMessage(), 'Invalid service selected.' ) !== false, 'Rejects invalid service' );
+}
+
+$_POST['service_id'] = 'service-1';
+$_POST['booking_date'] = '2000-01-01'; // Past date
+try {
+	ross_submit_booking();
+} catch ( Exception $e ) {
+	assert( strpos( $e->getMessage(), 'Booking date cannot be in the past.' ) !== false, 'Rejects past date' );
+}
+
+$_POST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
+$_POST['time_slot'] = '25:00 PM'; // Invalid time slot
+try {
+	ross_submit_booking();
+} catch ( Exception $e ) {
+	assert( strpos( $e->getMessage(), 'Invalid time slot selected.' ) !== false, 'Rejects invalid time slot' );
+}
+echo "PASSED\n";
+
+// Test 7: Admin Dashboard Page render
+echo "Test 7: Admin Dashboard Page render... ";
 ob_start();
 ross_admin_appointments_page();
 $output = ob_get_clean();
@@ -266,10 +297,10 @@ assert( strpos( $output, 'Appointment Bookings Directory' ) !== false, 'Admin pa
 assert( strpos( $output, 'John Doe' ) !== false, 'Booked client name rendered in admin table' );
 echo "PASSED\n";
 
-// Test 7: Admin Approve Action
-echo "Test 7: Admin Approve Action... ";
+// Test 8: Admin Approve Action
+echo "Test 8: Admin Approve Action... ";
 $_GET['action'] = 'approve';
-$_GET['booking_id'] = 2; // insert_id started at 1 and incremented to 2
+$_GET['booking_id'] = 2;
 ob_start();
 ross_admin_appointments_page();
 $admin_out = ob_get_clean();

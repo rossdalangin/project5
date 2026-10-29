@@ -37,7 +37,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         clearMessage();
-        slotsList.innerHTML = '<p class="ross-loading">Loading available slots...</p>';
+        slotsList.textContent = '';
+        const loadingPara = document.createElement('p');
+        loadingPara.className = 'ross-loading';
+        loadingPara.textContent = 'Loading available slots...';
+        slotsList.appendChild(loadingPara);
+
         slotsContainer.style.display = 'block';
         bookingForm.style.display = 'none';
         selectedSlotInput.value = '';
@@ -60,18 +65,28 @@ document.addEventListener('DOMContentLoaded', function () {
             if (res.success && res.data && res.data.slots) {
                 renderSlots(res.data.slots);
             } else {
-                slotsList.innerHTML = '<p class="ross-error">' + (res.data && res.data.message ? res.data.message : 'Error fetching slots.') + '</p>';
+                slotsList.textContent = '';
+                const errPara = document.createElement('p');
+                errPara.className = 'ross-error';
+                errPara.textContent = (res.data && res.data.message) ? res.data.message : 'Error fetching slots.';
+                slotsList.appendChild(errPara);
             }
         })
         .catch(err => {
-            slotsList.innerHTML = '<p class="ross-error">Network error occurred. Please try again.</p>';
+            slotsList.textContent = '';
+            const errPara = document.createElement('p');
+            errPara.className = 'ross-error';
+            errPara.textContent = 'Network error occurred. Please try again.';
+            slotsList.appendChild(errPara);
         });
     }
 
     function renderSlots(slots) {
-        slotsList.innerHTML = '';
+        slotsList.textContent = '';
         if (slots.length === 0) {
-            slotsList.innerHTML = '<p>No available slots for this date.</p>';
+            const noSlotsPara = document.createElement('p');
+            noSlotsPara.textContent = 'No available slots for this date.';
+            slotsList.appendChild(noSlotsPara);
             return;
         }
 
