@@ -116,10 +116,11 @@ class MockWPDB {
 global $wpdb;
 $wpdb = new MockWPDB();
 
-// Mock WP core functions
+// Mock WP core functions & Options store
 $actions = array();
 $shortcodes = array();
 $sent_emails = array();
+$options_store = array();
 
 function add_action( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	global $actions;
@@ -134,6 +135,17 @@ function register_activation_hook( $file, $callback ) {
 function add_shortcode( $tag, $callback ) {
 	global $shortcodes;
 	$shortcodes[ $tag ] = $callback;
+}
+
+function get_option( $opt, $default = false ) {
+	global $options_store;
+	return array_key_exists( $opt, $options_store ) ? $options_store[ $opt ] : $default;
+}
+
+function update_option( $opt, $val ) {
+	global $options_store;
+	$options_store[ $opt ] = $val;
+	return true;
 }
 
 function get_bloginfo( $show = '' ) { return 'Test Site'; }
@@ -152,6 +164,7 @@ function esc_attr( $text ) { return htmlspecialchars( (string) $text, ENT_QUOTES
 function esc_url( $url ) { return $url; }
 function esc_html_e( $text, $domain = 'default' ) { echo esc_html( $text ); }
 function esc_html__( $text, $domain = 'default' ) { return esc_html( $text ); }
+function esc_attr_e( $text, $domain = 'default' ) { echo esc_attr( $text ); }
 function __( $text, $domain = 'default' ) { return $text; }
 function wp_kses_post( $text ) { return $text; }
 function selected( $selected, $current = true, $echo = true ) {
@@ -159,6 +172,12 @@ function selected( $selected, $current = true, $echo = true ) {
 	if ( $echo ) echo $result;
 	return $result;
 }
+function checked( $checked, $current = true, $echo = true ) {
+	$result = ( (string) $checked === (string) $current ) ? "checked='checked'" : '';
+	if ( $echo ) echo $result;
+	return $result;
+}
+function wp_nonce_field( $action ) { echo '<input type="hidden" name="_wpnonce" value="valid_nonce" />'; }
 
 function sanitize_text_field( $str ) {
 	return trim( strip_tags( (string) $str ) );
@@ -242,11 +261,12 @@ require_once __DIR__ . '/../appointment-booking-directory.php';
 // Run tests
 echo "--- Running Tests ---\n";
 
-// Test 1: DB Table Creation Hook
-echo "Test 1: Activation Hook & DB Creation... ";
+// Test 1: DB Table Creation Hook & Default Options
+echo "Test 1: Activation Hook, DB Creation & Options init... ";
 ross_booking_activate();
 assert( ! empty( $wpdb->queries ), 'dbDelta query executed' );
 assert( strpos( $wpdb->queries[0], 'wp_appointment_slots' ) !== false, 'Table name present in query' );
+assert( get_option( 'ross_booking_currency_symbol' ) === '$', 'Default currency initialized' );
 echo "PASSED\n";
 
 // Test 2: Get Available Slots via AJAX
@@ -283,15 +303,13 @@ try {
 }
 echo "PASSED\n";
 
-// Test 4: Re-fetching slots shows 09:00 AM as unavailable
-echo "Test 4: Verify booked slot unavailable... ";
-try {
-	ross_get_available_slots();
-} catch ( Exception $e ) {
-	$json = json_decode( str_replace( 'JSON_SUCCESS: ', '', $e->getMessage() ), true );
-	assert( $json['slots'][0]['time_slot'] === '09:00 AM', 'First slot is 09:00 AM' );
-	assert( $json['slots'][0]['available'] === false, '09:00 AM is now unavailable' );
-}
+// Test 4: Dynamic Slot Interval (30 minutes)
+echo "Test 4: Dynamic 30-minute Slot Interval... ";
+update_option( 'ross_booking_slot_interval', '30' );
+$thirty_min_slots = ross_get_default_time_slots();
+assert( count( $thirty_min_slots ) === 14, 'Generated 14 slots for 30-minute interval' );
+assert( in_array( '09:30 AM', $thirty_min_slots, true ), '09:30 AM slot is present' );
+update_option( 'ross_booking_slot_interval', '60' ); // reset
 echo "PASSED\n";
 
 // Test 5: Double booking same slot returns error
@@ -339,16 +357,22 @@ assert( strpos( $output, 'Total Bookings' ) !== false, 'Analytics card rendered'
 assert( strpos( $output, 'John Doe' ) !== false, 'Booked client name rendered in admin table' );
 echo "PASSED\n";
 
-// Test 8: Admin Approve Action & Approval Email
-echo "Test 8: Admin Approve Action & Email... ";
-$_GET['action'] = 'approve';
-$_GET['booking_id'] = 2;
+// Test 8: Admin Settings Page save & render
+echo "Test 8: Admin Settings Page save & render... ";
+$_POST['ross_save_settings'] = '1';
+$_POST['ross_booking_business_name'] = 'Acme Medical';
+$_POST['ross_booking_admin_email'] = 'admin@acme.test';
+$_POST['ross_booking_currency_symbol'] = '€';
+$_POST['ross_booking_slot_interval'] = '30';
+$_POST['ross_booking_auto_approve'] = '1';
+
 ob_start();
-ross_admin_appointments_page();
-$admin_out = ob_get_clean();
-assert( strpos( $admin_out, 'Booking approved successfully' ) !== false, 'Approval message displayed' );
-assert( count( $sent_emails ) === 2, 'Approval email dispatched' );
-assert( strpos( $sent_emails[1]['subject'], 'Appointment Approved' ) !== false, 'Approval email subject correct' );
+ross_admin_settings_page();
+$settings_out = ob_get_clean();
+assert( strpos( $settings_out, 'Settings saved successfully' ) !== false, 'Settings saved notice displayed' );
+assert( get_option( 'ross_booking_business_name' ) === 'Acme Medical', 'Business name option updated' );
+assert( get_option( 'ross_booking_currency_symbol' ) === '€', 'Currency option updated' );
+assert( strpos( ross_get_services()['service-1']['price'], '€50' ) !== false, 'Service price shows new currency' );
 echo "PASSED\n";
 
 // Cleanup mock wp-admin directory

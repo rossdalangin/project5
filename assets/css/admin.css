@@ -1,0 +1,165 @@
+/* Admin Dashboard Styles for Appointment Booking Pro */
+.ross-admin-wrap {
+    margin: 20px 20px 0 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+}
+
+.ross-admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #dcdcde;
+}
+
+.ross-admin-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: #1e1e1e;
+    margin: 0;
+}
+
+.ross-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.ross-card-stat {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 22px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    border: 1px solid #e2e8f0;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.ross-card-stat:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.ross-card-stat::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 5px;
+}
+
+.ross-card-stat.total::before { background: #2271b1; }
+.ross-card-stat.pending::before { background: #dba617; }
+.ross-card-stat.approved::before { background: #00a32a; }
+.ross-card-stat.today::before { background: #72aee6; }
+
+.ross-stat-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #646970;
+    margin-bottom: 8px;
+}
+
+.ross-stat-val {
+    font-size: 28px;
+    font-weight: 800;
+    color: #1d2327;
+}
+
+.ross-filter-box {
+    background: #ffffff;
+    padding: 16px 20px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.ross-filter-box select {
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    font-size: 13px;
+    min-width: 150px;
+}
+
+.ross-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.ross-badge-pending {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.ross-badge-approved {
+    background-color: #d1fae5;
+    color: #065f46;
+}
+
+.ross-badge-cancelled {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.ross-table-container {
+    background: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.ross-admin-settings-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 25px;
+    max-width: 800px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.ross-settings-group {
+    margin-bottom: 22px;
+}
+
+.ross-settings-group label {
+    display: block;
+    font-weight: 600;
+    font-size: 14px;
+    color: #1e293b;
+    margin-bottom: 6px;
+}
+
+.ross-settings-group .description {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 4px;
+}
+
+.ross-settings-group input[type="text"],
+.ross-settings-group input[type="email"],
+.ross-settings-group select,
+.ross-settings-group textarea {
+    width: 100%;
+    max-width: 500px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    font-size: 14px;
+}

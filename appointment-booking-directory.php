@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Appointment Booking & Service Directory Pro
- * Description: A premium, self-contained WordPress appointment booking and service directory plugin with automated notifications, analytics, filtering, and CSV export without external SaaS dependencies.
- * Version: 1.1.0
+ * Description: A premium, self-contained WordPress appointment booking and service directory plugin with automated notifications, admin settings, analytics, filtering, and CSV export without external SaaS dependencies.
+ * Version: 1.2.0
  * Author: Senior WordPress Full-Stack Engineer
  * Text Domain: appointment-booking-directory
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'ROSS_BOOKING_VERSION', '1.1.0' );
+define( 'ROSS_BOOKING_VERSION', '1.2.0' );
 define( 'ROSS_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ROSS_BOOKING_URL', plugin_dir_url( __FILE__ ) );
 
@@ -38,13 +38,51 @@ function ross_booking_activate() {
 
 	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 	dbDelta( $sql );
+
+	// Initialize default options
+	if ( false === get_option( 'ross_booking_business_name' ) ) {
+		update_option( 'ross_booking_business_name', get_bloginfo( 'name' ) );
+	}
+	if ( false === get_option( 'ross_booking_admin_email' ) ) {
+		update_option( 'ross_booking_admin_email', get_option( 'admin_email' ) );
+	}
+	if ( false === get_option( 'ross_booking_currency_symbol' ) ) {
+		update_option( 'ross_booking_currency_symbol', '$' );
+	}
+	if ( false === get_option( 'ross_booking_slot_interval' ) ) {
+		update_option( 'ross_booking_slot_interval', '60' );
+	}
+	if ( false === get_option( 'ross_booking_auto_approve' ) ) {
+		update_option( 'ross_booking_auto_approve', '0' );
+	}
 }
 register_activation_hook( __FILE__, 'ross_booking_activate' );
 
 /**
- * Default Available Time Slots Generator
+ * Get Configured Time Slots Based on Settings
  */
 function ross_get_default_time_slots() {
+	$interval = get_option( 'ross_booking_slot_interval', '60' );
+
+	if ( '30' === $interval ) {
+		return array(
+			'09:00 AM',
+			'09:30 AM',
+			'10:00 AM',
+			'10:30 AM',
+			'11:00 AM',
+			'11:30 AM',
+			'01:00 PM',
+			'01:30 PM',
+			'02:00 PM',
+			'02:30 PM',
+			'03:00 PM',
+			'03:30 PM',
+			'04:00 PM',
+			'04:30 PM',
+		);
+	}
+
 	return array(
 		'09:00 AM',
 		'10:00 AM',
@@ -60,12 +98,13 @@ function ross_get_default_time_slots() {
  * Premium Services Directory List with Metadata
  */
 function ross_get_services() {
+	$curr = get_option( 'ross_booking_currency_symbol', '$' );
 	return array(
 		'service-1' => array(
 			'id'          => 'service-1',
 			'name'        => 'General Consultation',
 			'category'    => 'Consulting',
-			'price'       => '$50',
+			'price'       => $curr . '50',
 			'duration'    => '30 min',
 			'description' => 'A 30-minute introductory consultation session.',
 		),
@@ -73,7 +112,7 @@ function ross_get_services() {
 			'id'          => 'service-2',
 			'name'        => 'Full Technical Audit',
 			'category'    => 'Engineering',
-			'price'       => '$250',
+			'price'       => $curr . '250',
 			'duration'    => '90 min',
 			'description' => 'A comprehensive review and audit of your system architecture.',
 		),
@@ -81,7 +120,7 @@ function ross_get_services() {
 			'id'          => 'service-3',
 			'name'        => 'Custom Strategy Session',
 			'category'    => 'Strategy',
-			'price'       => '$150',
+			'price'       => $curr . '150',
 			'duration'    => '60 min',
 			'description' => 'One-on-one deep dive strategy session tailored to your needs.',
 		),
@@ -92,11 +131,11 @@ function ross_get_services() {
  * Email Notification Dispatcher
  */
 function ross_send_booking_email( $type, $booking_id, $client_email, $client_name, $service_name, $booking_date, $time_slot ) {
-	$site_name = get_bloginfo( 'name' );
-	$headers   = array( 'Content-Type: text/html; charset=UTF-8' );
+	$business_name = get_option( 'ross_booking_business_name', get_bloginfo( 'name' ) );
+	$headers       = array( 'Content-Type: text/html; charset=UTF-8' );
 
 	if ( 'new_booking' === $type ) {
-		$subject = sprintf( '[%s] Appointment Request Received (#%d)', $site_name, $booking_id );
+		$subject = sprintf( '[%s] Appointment Request Received (#%d)', $business_name, $booking_id );
 		$message = sprintf(
 			'<h3>Hello %s,</h3><p>Thank you for submitting your booking request! Here are your appointment details:</p><ul><li><strong>Booking ID:</strong> #%d</li><li><strong>Service:</strong> %s</li><li><strong>Date:</strong> %s</li><li><strong>Time Slot:</strong> %s</li><li><strong>Status:</strong> Pending Approval</li></ul><p>We will review your booking shortly.</p>',
 			esc_html( $client_name ),
@@ -106,7 +145,7 @@ function ross_send_booking_email( $type, $booking_id, $client_email, $client_nam
 			esc_html( $time_slot )
 		);
 	} elseif ( 'approved' === $type ) {
-		$subject = sprintf( '[%s] Appointment Approved (#%d)', $site_name, $booking_id );
+		$subject = sprintf( '[%s] Appointment Approved (#%d)', $business_name, $booking_id );
 		$message = sprintf(
 			'<h3>Hello %s,</h3><p>Great news! Your appointment booking has been <strong>APPROVED</strong>.</p><ul><li><strong>Booking ID:</strong> #%d</li><li><strong>Service:</strong> %s</li><li><strong>Date:</strong> %s</li><li><strong>Time Slot:</strong> %s</li></ul><p>We look forward to meeting you!</p>',
 			esc_html( $client_name ),
@@ -116,7 +155,7 @@ function ross_send_booking_email( $type, $booking_id, $client_email, $client_nam
 			esc_html( $time_slot )
 		);
 	} elseif ( 'cancelled' === $type ) {
-		$subject = sprintf( '[%s] Appointment Status Update (#%d)', $site_name, $booking_id );
+		$subject = sprintf( '[%s] Appointment Status Update (#%d)', $business_name, $booking_id );
 		$message = sprintf(
 			'<h3>Hello %s,</h3><p>Your appointment booking (#%d) for <strong>%s</strong> on %s at %s has been cancelled.</p><p>If you have any questions, please contact us.</p>',
 			esc_html( $client_name ),
@@ -192,6 +231,16 @@ function ross_booking_enqueue_scripts() {
 	) );
 }
 add_action( 'wp_enqueue_scripts', 'ross_booking_enqueue_scripts' );
+
+/**
+ * Enqueue Admin Scripts and Styles
+ */
+function ross_booking_enqueue_admin_scripts( $hook ) {
+	if ( false !== strpos( $hook, 'ross-appointments' ) ) {
+		wp_enqueue_style( 'ross-booking-admin-css', ROSS_BOOKING_URL . 'assets/css/admin.css', array(), ROSS_BOOKING_VERSION );
+	}
+}
+add_action( 'admin_enqueue_scripts', 'ross_booking_enqueue_admin_scripts' );
 
 /**
  * Shortcode Output
@@ -382,6 +431,9 @@ function ross_submit_booking() {
 		wp_send_json_error( array( 'message' => __( 'Selected time slot is no longer available.', 'appointment-booking-directory' ) ) );
 	}
 
+	$auto_approve   = get_option( 'ross_booking_auto_approve', '0' );
+	$initial_status = ( '1' === $auto_approve ) ? 'approved' : 'pending';
+
 	$inserted = $wpdb->insert(
 		$table_name,
 		array(
@@ -390,7 +442,7 @@ function ross_submit_booking() {
 			'time_slot'    => $time_slot,
 			'client_name'  => $client_name,
 			'client_email' => $client_email,
-			'status'       => 'pending',
+			'status'       => $initial_status,
 			'created_at'   => current_time( 'mysql' ),
 		),
 		array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
@@ -404,7 +456,8 @@ function ross_submit_booking() {
 	$service_name = $services[ $service_id ]['name'];
 
 	// Dispatch email notification
-	ross_send_booking_email( 'new_booking', $booking_id, $client_email, $client_name, $service_name, $booking_date, $time_slot );
+	$notification_type = ( 'approved' === $initial_status ) ? 'approved' : 'new_booking';
+	ross_send_booking_email( $notification_type, $booking_id, $client_email, $client_name, $service_name, $booking_date, $time_slot );
 
 	wp_send_json_success( array(
 		'booking_id'   => $booking_id,
@@ -412,6 +465,7 @@ function ross_submit_booking() {
 		'booking_date' => $booking_date,
 		'time_slot'    => $time_slot,
 		'client_name'  => $client_name,
+		'status'       => $initial_status,
 		'message'      => __( 'Booking submitted successfully!', 'appointment-booking-directory' ),
 	) );
 }
@@ -419,7 +473,7 @@ add_action( 'wp_ajax_ross_submit_booking', 'ross_submit_booking' );
 add_action( 'wp_ajax_nopriv_ross_submit_booking', 'ross_submit_booking' );
 
 /**
- * Register Admin Menu and Submenu Page
+ * Register Admin Menu and Submenu Pages
  */
 function ross_admin_menu() {
 	add_menu_page(
@@ -439,6 +493,15 @@ function ross_admin_menu() {
 		'manage_options',
 		'ross-appointments',
 		'ross_admin_appointments_page'
+	);
+
+	add_submenu_page(
+		'ross-appointments',
+		__( 'Settings', 'appointment-booking-directory' ),
+		__( 'Settings', 'appointment-booking-directory' ),
+		'manage_options',
+		'ross-appointments-settings',
+		'ross_admin_settings_page'
 	);
 }
 add_action( 'admin_menu', 'ross_admin_menu' );
@@ -540,35 +603,36 @@ function ross_admin_appointments_page() {
 	);
 
 	?>
-	<div class="wrap">
-		<h1 class="wp-heading-inline"><?php esc_html_e( 'Appointment Bookings Directory Pro', 'appointment-booking-directory' ); ?></h1>
-		<a href="<?php echo esc_url( $export_url ); ?>" class="page-title-action button button-primary"><?php esc_html_e( 'Export to CSV', 'appointment-booking-directory' ); ?></a>
-		<hr class="wp-header-end">
+	<div class="wrap ross-admin-wrap">
+		<div class="ross-admin-header">
+			<h1><?php esc_html_e( 'Appointment Bookings Directory Pro', 'appointment-booking-directory' ); ?></h1>
+			<a href="<?php echo esc_url( $export_url ); ?>" class="button button-primary"><?php esc_html_e( 'Export to CSV', 'appointment-booking-directory' ); ?></a>
+		</div>
 
 		<?php echo wp_kses_post( $notice ); ?>
 
 		<!-- Analytics Cards -->
-		<div style="display: flex; gap: 15px; margin: 20px 0;">
-			<div style="flex: 1; background: #fff; padding: 15px; border-left: 4px solid #2271b1; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px;">
-				<div style="font-size: 13px; color: #646970; font-weight: 600; text-transform: uppercase;"><?php esc_html_e( 'Total Bookings', 'appointment-booking-directory' ); ?></div>
-				<div style="font-size: 24px; font-weight: bold; margin-top: 5px; color: #1d2327;"><?php echo esc_html( $total_count ); ?></div>
+		<div class="ross-analytics-grid">
+			<div class="ross-card-stat total">
+				<div class="ross-stat-title"><?php esc_html_e( 'Total Bookings', 'appointment-booking-directory' ); ?></div>
+				<div class="ross-stat-val"><?php echo esc_html( $total_count ); ?></div>
 			</div>
-			<div style="flex: 1; background: #fff; padding: 15px; border-left: 4px solid #f0b849; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px;">
-				<div style="font-size: 13px; color: #646970; font-weight: 600; text-transform: uppercase;"><?php esc_html_e( 'Pending Approval', 'appointment-booking-directory' ); ?></div>
-				<div style="font-size: 24px; font-weight: bold; margin-top: 5px; color: #1d2327;"><?php echo esc_html( $pending_count ); ?></div>
+			<div class="ross-card-stat pending">
+				<div class="ross-stat-title"><?php esc_html_e( 'Pending Approval', 'appointment-booking-directory' ); ?></div>
+				<div class="ross-stat-val"><?php echo esc_html( $pending_count ); ?></div>
 			</div>
-			<div style="flex: 1; background: #fff; padding: 15px; border-left: 4px solid #00a32a; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px;">
-				<div style="font-size: 13px; color: #646970; font-weight: 600; text-transform: uppercase;"><?php esc_html_e( 'Approved Bookings', 'appointment-booking-directory' ); ?></div>
-				<div style="font-size: 24px; font-weight: bold; margin-top: 5px; color: #1d2327;"><?php echo esc_html( $approved_count ); ?></div>
+			<div class="ross-card-stat approved">
+				<div class="ross-stat-title"><?php esc_html_e( 'Approved Bookings', 'appointment-booking-directory' ); ?></div>
+				<div class="ross-stat-val"><?php echo esc_html( $approved_count ); ?></div>
 			</div>
-			<div style="flex: 1; background: #fff; padding: 15px; border-left: 4px solid #72aee6; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 4px;">
-				<div style="font-size: 13px; color: #646970; font-weight: 600; text-transform: uppercase;"><?php esc_html_e( 'Today\'s Bookings', 'appointment-booking-directory' ); ?></div>
-				<div style="font-size: 24px; font-weight: bold; margin-top: 5px; color: #1d2327;"><?php echo esc_html( $today_count ); ?></div>
+			<div class="ross-card-stat today">
+				<div class="ross-stat-title"><?php esc_html_e( 'Today\'s Bookings', 'appointment-booking-directory' ); ?></div>
+				<div class="ross-stat-val"><?php echo esc_html( $today_count ); ?></div>
 			</div>
 		</div>
 
 		<!-- Filter Controls -->
-		<form method="get" style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+		<form method="get" class="ross-filter-box">
 			<input type="hidden" name="page" value="ross-appointments" />
 			<select name="filter_status">
 				<option value=""><?php esc_html_e( 'All Statuses', 'appointment-booking-directory' ); ?></option>
@@ -592,80 +656,171 @@ function ross_admin_appointments_page() {
 			<?php endif; ?>
 		</form>
 
-		<table class="wp-list-table widefat fixed striped">
-			<thead>
-				<tr>
-					<th scope="col" style="width: 50px;"><?php esc_html_e( 'ID', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Service', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Booking Date', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Time Slot', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Client Name', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Client Email', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Status', 'appointment-booking-directory' ); ?></th>
-					<th scope="col"><?php esc_html_e( 'Actions', 'appointment-booking-directory' ); ?></th>
-				</tr>
-			</thead>
-			<tbody>
-				<?php if ( ! empty( $bookings ) ) : ?>
-					<?php foreach ( $bookings as $item ) : ?>
-						<?php
-						$service_name = isset( $services[ $item->service_id ] ) ? $services[ $item->service_id ]['name'] : $item->service_id;
-						$approve_url  = wp_nonce_url(
-							add_query_arg(
-								array(
-									'page'       => 'ross-appointments',
-									'action'     => 'approve',
-									'booking_id' => $item->id,
-								),
-								admin_url( 'admin.php' )
-							),
-							'ross_admin_action_' . $item->id
-						);
-						$cancel_url   = wp_nonce_url(
-							add_query_arg(
-								array(
-									'page'       => 'ross-appointments',
-									'action'     => 'cancel',
-									'booking_id' => $item->id,
-								),
-								admin_url( 'admin.php' )
-							),
-							'ross_admin_action_' . $item->id
-						);
-						?>
-						<tr>
-							<td><?php echo esc_html( $item->id ); ?></td>
-							<td><strong><?php echo esc_html( $service_name ); ?></strong></td>
-							<td><?php echo esc_html( $item->booking_date ); ?></td>
-							<td><?php echo esc_html( $item->time_slot ); ?></td>
-							<td><?php echo esc_html( $item->client_name ); ?></td>
-							<td><a href="<?php echo esc_url( 'mailto:' . $item->client_email ); ?>"><?php echo esc_html( $item->client_email ); ?></a></td>
-							<td>
-								<?php if ( 'approved' === $item->status ) : ?>
-									<span class="badge" style="background:#c6e1c6; color:#234a23; padding:3px 8px; border-radius:3px; font-weight:bold;"><?php esc_html_e( 'Approved', 'appointment-booking-directory' ); ?></span>
-								<?php elseif ( 'cancelled' === $item->status ) : ?>
-									<span class="badge" style="background:#f8d7da; color:#721c24; padding:3px 8px; border-radius:3px; font-weight:bold;"><?php esc_html_e( 'Cancelled', 'appointment-booking-directory' ); ?></span>
-								<?php else : ?>
-									<span class="badge" style="background:#fff3cd; color:#856404; padding:3px 8px; border-radius:3px; font-weight:bold;"><?php esc_html_e( 'Pending', 'appointment-booking-directory' ); ?></span>
-								<?php endif; ?>
-							</td>
-							<td>
-								<?php if ( 'approved' !== $item->status ) : ?>
-									<a href="<?php echo esc_url( $approve_url ); ?>" class="button button-small button-primary"><?php esc_html_e( 'Approve', 'appointment-booking-directory' ); ?></a>
-								<?php endif; ?>
-								<?php if ( 'cancelled' !== $item->status ) : ?>
-									<a href="<?php echo esc_url( $cancel_url ); ?>" class="button button-small button-link-delete" onclick="return confirm('Are you sure you want to cancel this booking?');"><?php esc_html_e( 'Cancel', 'appointment-booking-directory' ); ?></a>
-								<?php endif; ?>
-							</td>
-						</tr>
-					<?php endforeach; ?>
-				<?php else : ?>
+		<div class="ross-table-container">
+			<table class="wp-list-table widefat fixed striped">
+				<thead>
 					<tr>
-						<td colspan="8"><?php esc_html_e( 'No appointments match the current criteria.', 'appointment-booking-directory' ); ?></td>
+						<th scope="col" style="width: 50px;"><?php esc_html_e( 'ID', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Service', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Booking Date', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Time Slot', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Client Name', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Client Email', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Status', 'appointment-booking-directory' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Actions', 'appointment-booking-directory' ); ?></th>
 					</tr>
-				<?php endif; ?>
-			</tbody>
-		</table>
+				</thead>
+				<tbody>
+					<?php if ( ! empty( $bookings ) ) : ?>
+						<?php foreach ( $bookings as $item ) : ?>
+							<?php
+							$service_name = isset( $services[ $item->service_id ] ) ? $services[ $item->service_id ]['name'] : $item->service_id;
+							$approve_url  = wp_nonce_url(
+								add_query_arg(
+									array(
+										'page'       => 'ross-appointments',
+										'action'     => 'approve',
+										'booking_id' => $item->id,
+									),
+									admin_url( 'admin.php' )
+								),
+								'ross_admin_action_' . $item->id
+							);
+							$cancel_url   = wp_nonce_url(
+								add_query_arg(
+									array(
+										'page'       => 'ross-appointments',
+										'action'     => 'cancel',
+										'booking_id' => $item->id,
+									),
+									admin_url( 'admin.php' )
+								),
+								'ross_admin_action_' . $item->id
+							);
+							?>
+							<tr>
+								<td><?php echo esc_html( $item->id ); ?></td>
+								<td><strong><?php echo esc_html( $service_name ); ?></strong></td>
+								<td><?php echo esc_html( $item->booking_date ); ?></td>
+								<td><?php echo esc_html( $item->time_slot ); ?></td>
+								<td><?php echo esc_html( $item->client_name ); ?></td>
+								<td><a href="<?php echo esc_url( 'mailto:' . $item->client_email ); ?>"><?php echo esc_html( $item->client_email ); ?></a></td>
+								<td>
+									<?php if ( 'approved' === $item->status ) : ?>
+										<span class="ross-badge ross-badge-approved"><?php esc_html_e( 'Approved', 'appointment-booking-directory' ); ?></span>
+									<?php elseif ( 'cancelled' === $item->status ) : ?>
+										<span class="ross-badge ross-badge-cancelled"><?php esc_html_e( 'Cancelled', 'appointment-booking-directory' ); ?></span>
+									<?php else : ?>
+										<span class="ross-badge ross-badge-pending"><?php esc_html_e( 'Pending', 'appointment-booking-directory' ); ?></span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php if ( 'approved' !== $item->status ) : ?>
+										<a href="<?php echo esc_url( $approve_url ); ?>" class="button button-small button-primary"><?php esc_html_e( 'Approve', 'appointment-booking-directory' ); ?></a>
+									<?php endif; ?>
+									<?php if ( 'cancelled' !== $item->status ) : ?>
+										<a href="<?php echo esc_url( $cancel_url ); ?>" class="button button-small button-link-delete" onclick="return confirm('Are you sure you want to cancel this booking?');"><?php esc_html_e( 'Cancel', 'appointment-booking-directory' ); ?></a>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					<?php else : ?>
+						<tr>
+							<td colspan="8"><?php esc_html_e( 'No appointments match the current criteria.', 'appointment-booking-directory' ); ?></td>
+						</tr>
+					<?php endif; ?>
+				</tbody>
+			</table>
+		</div>
+	</div>
+	<?php
+}
+
+/**
+ * Admin Settings Page Callback
+ */
+function ross_admin_settings_page() {
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'You do not have sufficient permissions to access this page.', 'appointment-booking-directory' ) );
+	}
+
+	$notice = '';
+	if ( isset( $_POST['ross_save_settings'] ) ) {
+		check_admin_referer( 'ross_save_settings_nonce' );
+
+		$business_name   = isset( $_POST['ross_booking_business_name'] ) ? sanitize_text_field( wp_unslash( $_POST['ross_booking_business_name'] ) ) : '';
+		$admin_email     = isset( $_POST['ross_booking_admin_email'] ) ? sanitize_email( wp_unslash( $_POST['ross_booking_admin_email'] ) ) : '';
+		$currency_symbol = isset( $_POST['ross_booking_currency_symbol'] ) ? sanitize_text_field( wp_unslash( $_POST['ross_booking_currency_symbol'] ) ) : '$';
+		$slot_interval   = isset( $_POST['ross_booking_slot_interval'] ) ? sanitize_text_field( wp_unslash( $_POST['ross_booking_slot_interval'] ) ) : '60';
+		$auto_approve    = isset( $_POST['ross_booking_auto_approve'] ) ? '1' : '0';
+
+		update_option( 'ross_booking_business_name', $business_name );
+		update_option( 'ross_booking_admin_email', $admin_email );
+		update_option( 'ross_booking_currency_symbol', $currency_symbol );
+		update_option( 'ross_booking_slot_interval', $slot_interval );
+		update_option( 'ross_booking_auto_approve', $auto_approve );
+
+		$notice = '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved successfully.', 'appointment-booking-directory' ) . '</p></div>';
+	}
+
+	$business_name   = get_option( 'ross_booking_business_name', get_bloginfo( 'name' ) );
+	$admin_email     = get_option( 'ross_booking_admin_email', get_option( 'admin_email' ) );
+	$currency_symbol = get_option( 'ross_booking_currency_symbol', '$' );
+	$slot_interval   = get_option( 'ross_booking_slot_interval', '60' );
+	$auto_approve    = get_option( 'ross_booking_auto_approve', '0' );
+
+	?>
+	<div class="wrap ross-admin-wrap">
+		<div class="ross-admin-header">
+			<h1><?php esc_html_e( 'Appointment Booking Pro Settings', 'appointment-booking-directory' ); ?></h1>
+		</div>
+
+		<?php echo wp_kses_post( $notice ); ?>
+
+		<div class="ross-admin-settings-card">
+			<form method="post" action="">
+				<?php wp_nonce_field( 'ross_save_settings_nonce' ); ?>
+
+				<div class="ross-settings-group">
+					<label for="ross_booking_business_name"><?php esc_html_e( 'Business / Organization Name', 'appointment-booking-directory' ); ?></label>
+					<input type="text" id="ross_booking_business_name" name="ross_booking_business_name" value="<?php echo esc_attr( $business_name ); ?>" required />
+					<p class="description"><?php esc_html_e( 'Used in outgoing booking email subject lines and client confirmations.', 'appointment-booking-directory' ); ?></p>
+				</div>
+
+				<div class="ross-settings-group">
+					<label for="ross_booking_admin_email"><?php esc_html_e( 'Admin Notification Email', 'appointment-booking-directory' ); ?></label>
+					<input type="email" id="ross_booking_admin_email" name="ross_booking_admin_email" value="<?php echo esc_attr( $admin_email ); ?>" required />
+					<p class="description"><?php esc_html_e( 'Primary administrative email for notification records.', 'appointment-booking-directory' ); ?></p>
+				</div>
+
+				<div class="ross-settings-group">
+					<label for="ross_booking_currency_symbol"><?php esc_html_e( 'Currency Symbol', 'appointment-booking-directory' ); ?></label>
+					<input type="text" id="ross_booking_currency_symbol" name="ross_booking_currency_symbol" value="<?php echo esc_attr( $currency_symbol ); ?>" style="max-width: 80px;" required />
+					<p class="description"><?php esc_html_e( 'Symbol displayed in directory service prices (e.g. $, €, £, ¥).', 'appointment-booking-directory' ); ?></p>
+				</div>
+
+				<div class="ross-settings-group">
+					<label for="ross_booking_slot_interval"><?php esc_html_e( 'Time Slot Interval', 'appointment-booking-directory' ); ?></label>
+					<select id="ross_booking_slot_interval" name="ross_booking_slot_interval">
+						<option value="60" <?php selected( $slot_interval, '60' ); ?>><?php esc_html_e( '60 Minutes (Hourly)', 'appointment-booking-directory' ); ?></option>
+						<option value="30" <?php selected( $slot_interval, '30' ); ?>><?php esc_html_e( '30 Minutes (Half-hourly)', 'appointment-booking-directory' ); ?></option>
+					</select>
+					<p class="description"><?php esc_html_e( 'Controls the available time slots generated on the booking calendar.', 'appointment-booking-directory' ); ?></p>
+				</div>
+
+				<div class="ross-settings-group">
+					<label>
+						<input type="checkbox" name="ross_booking_auto_approve" value="1" <?php checked( $auto_approve, '1' ); ?> />
+						<?php esc_html_e( 'Automatically Approve New Bookings', 'appointment-booking-directory' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'If enabled, new bookings are automatically confirmed without needing manual admin approval.', 'appointment-booking-directory' ); ?></p>
+				</div>
+
+				<p class="submit">
+					<input type="submit" name="ross_save_settings" class="button button-primary" value="<?php esc_attr_e( 'Save Settings', 'appointment-booking-directory' ); ?>" />
+				</p>
+			</form>
+		</div>
 	</div>
 	<?php
 }
