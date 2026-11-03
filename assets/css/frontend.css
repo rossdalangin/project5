@@ -20,6 +20,71 @@
     margin: 0 0 20px 0;
     color: #718096;
     font-size: 14px;
+    line-height: 1.4;
+}
+
+/* Steps Progress Indicator */
+.ross-steps {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 25px;
+    border-bottom: 1px solid #edf2f7;
+    padding-bottom: 15px;
+}
+
+.ross-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #a0aec0;
+    font-size: 13px;
+    font-weight: 600;
+    transition: color 0.2s ease;
+}
+
+.ross-step.active {
+    color: #3182ce;
+}
+
+.ross-step-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #edf2f7;
+    color: #718096;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ross-step.active .ross-step-num {
+    background: #3182ce;
+    color: #ffffff;
+}
+
+.ross-date-quick-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.ross-quick-date-btn {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4a5568;
+    background: #edf2f7;
+    border: 1px solid #cbd5e0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.ross-quick-date-btn:hover {
+    background: #e2e8f0;
+    color: #2d3748;
 }
 
 .ross-form-group {

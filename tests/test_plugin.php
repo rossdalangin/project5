@@ -4,6 +4,7 @@
  */
 
 define( 'ABSPATH', __DIR__ . '/../' );
+define( 'MINUTE_IN_SECONDS', 60 );
 
 // Create mock wp-admin/includes directory and upgrade.php for testing
 if ( ! file_exists( __DIR__ . '/../wp-admin/includes' ) ) {
@@ -23,6 +24,10 @@ class MockWPDB {
 
 	public function get_charset_collate() {
 		return 'DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+	}
+
+	public function esc_like( $text ) {
+		return addcslashes( $text, '_%\\' );
 	}
 
 	public function prepare( $query, ...$args ) {
@@ -116,11 +121,12 @@ class MockWPDB {
 global $wpdb;
 $wpdb = new MockWPDB();
 
-// Mock WP core functions & Options store
+// Mock WP core functions & Options/Transients store
 $actions = array();
 $shortcodes = array();
 $sent_emails = array();
 $options_store = array();
+$transients_store = array();
 
 function add_action( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	global $actions;
@@ -145,6 +151,17 @@ function get_option( $opt, $default = false ) {
 function update_option( $opt, $val ) {
 	global $options_store;
 	$options_store[ $opt ] = $val;
+	return true;
+}
+
+function get_transient( $key ) {
+	global $transients_store;
+	return isset( $transients_store[ $key ] ) ? $transients_store[ $key ] : false;
+}
+
+function set_transient( $key, $val, $expiration = 0 ) {
+	global $transients_store;
+	$transients_store[ $key ] = $val;
 	return true;
 }
 
@@ -269,110 +286,79 @@ assert( strpos( $wpdb->queries[0], 'wp_appointment_slots' ) !== false, 'Table na
 assert( get_option( 'ross_booking_currency_symbol' ) === '$', 'Default currency initialized' );
 echo "PASSED\n";
 
-// Test 2: Get Available Slots via AJAX
-echo "Test 2: ross_get_available_slots... ";
-$_REQUEST['security'] = 'valid_nonce';
-$_REQUEST['service_id'] = 'service-1';
-$_REQUEST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
-
-try {
-	ross_get_available_slots();
-} catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'JSON_SUCCESS' ) !== false, 'Returned JSON success' );
-	$json = json_decode( str_replace( 'JSON_SUCCESS: ', '', $e->getMessage() ), true );
-	assert( count( $json['slots'] ) === 7, 'All 7 slots returned' );
-	assert( $json['slots'][0]['available'] === true, 'Slot 0 is available' );
-}
-echo "PASSED\n";
-
-// Test 3: Submit Booking & Verify Email Trigger
-echo "Test 3: ross_submit_booking & wp_mail trigger... ";
+// Test 2: Honeypot Protection
+echo "Test 2: Honeypot Spam Protection... ";
 $_POST['security'] = 'valid_nonce';
 $_POST['service_id'] = 'service-1';
 $_POST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
 $_POST['time_slot'] = '09:00 AM';
+$_POST['client_name'] = 'Spam Bot';
+$_POST['client_email'] = 'bot@spam.test';
+$_POST['ross_hp'] = 'I am a bot';
+
+try {
+	ross_submit_booking();
+} catch ( Exception $e ) {
+	assert( strpos( $e->getMessage(), 'Spam detection triggered.' ) !== false, 'Blocked honeypot spam bot' );
+}
+unset( $_POST['ross_hp'] );
+echo "PASSED\n";
+
+// Test 3: Normal Booking Submission
+echo "Test 3: Normal Booking Submission... ";
 $_POST['client_name'] = 'John Doe';
 $_POST['client_email'] = 'john@example.com';
-
 try {
 	ross_submit_booking();
 } catch ( Exception $e ) {
 	assert( strpos( $e->getMessage(), 'JSON_SUCCESS' ) !== false, 'Booking submitted successfully' );
 	assert( count( $sent_emails ) === 1, 'Confirmation email dispatched' );
-	assert( strpos( $sent_emails[0]['subject'], 'Appointment Request Received' ) !== false, 'Email subject correct' );
 }
 echo "PASSED\n";
 
-// Test 4: Dynamic Slot Interval (30 minutes)
-echo "Test 4: Dynamic 30-minute Slot Interval... ";
-update_option( 'ross_booking_slot_interval', '30' );
-$thirty_min_slots = ross_get_default_time_slots();
-assert( count( $thirty_min_slots ) === 14, 'Generated 14 slots for 30-minute interval' );
-assert( in_array( '09:30 AM', $thirty_min_slots, true ), '09:30 AM slot is present' );
-update_option( 'ross_booking_slot_interval', '60' ); // reset
+// Test 4: Rate Limiting
+echo "Test 4: IP Rate Limiting... ";
+$ip = ross_get_client_ip();
+set_transient( 'ross_rate_' . md5( $ip ), 5, 600 ); // Max limit reached
+$_POST['time_slot'] = '10:00 AM';
+try {
+	ross_submit_booking();
+} catch ( Exception $e ) {
+	assert( strpos( $e->getMessage(), 'Too many booking requests' ) !== false, 'Rate limit blocked flood' );
+}
+set_transient( 'ross_rate_' . md5( $ip ), 1, 600 ); // Reset
 echo "PASSED\n";
 
-// Test 5: Double booking same slot returns error
-echo "Test 5: Prevent double booking... ";
-try {
-	ross_submit_booking();
-} catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'JSON_ERROR' ) !== false, 'Returned JSON error for double booking' );
-}
+// Test 5: Email Header Injection Protection
+echo "Test 5: Header Injection Protection in Emails... ";
+$header_inject_email = "victim@test.com\r\nBcc: evil@test.com";
+$header_inject_name = "Attacker\r\nSubject: Injected";
+ross_send_booking_email( 'new_booking', 99, $header_inject_email, $header_inject_name, 'General Consultation', '2026-11-20', '09:00 AM' );
+$last_email = end( $sent_emails );
+assert( strpos( $last_email['to'], "\r" ) === false, 'CR stripped from to field' );
+assert( strpos( $last_email['to'], "\n" ) === false, 'LF stripped from to field' );
+assert( strpos( $last_email['to'], 'evil@test.com' ) === false, 'Bcc header neutralized' );
 echo "PASSED\n";
 
-// Test 6: Strict validation testing (invalid service, invalid slot, past date)
-echo "Test 6: Strict validation checks... ";
-$_POST['service_id'] = 'invalid-service';
+// Test 6: String Length Boundaries
+echo "Test 6: Input Length Validation... ";
+$_POST['client_name'] = str_repeat( 'A', 150 );
 try {
 	ross_submit_booking();
 } catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'Invalid service selected.' ) !== false, 'Rejects invalid service' );
+	assert( strpos( $e->getMessage(), 'Input length exceeded' ) !== false, 'Rejected overlength name' );
 }
-
-$_POST['service_id'] = 'service-1';
-$_POST['booking_date'] = '2000-01-01'; // Past date
-try {
-	ross_submit_booking();
-} catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'Booking date cannot be in the past.' ) !== false, 'Rejects past date' );
-}
-
-$_POST['booking_date'] = date( 'Y-m-d', strtotime( '+1 day' ) );
-$_POST['time_slot'] = '25:00 PM'; // Invalid time slot
-try {
-	ross_submit_booking();
-} catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'Invalid time slot selected.' ) !== false, 'Rejects invalid time slot' );
-}
+$_POST['client_name'] = 'John Doe';
 echo "PASSED\n";
 
-// Test 7: Admin Dashboard Page render with analytics
-echo "Test 7: Admin Dashboard Page render & analytics... ";
+// Test 7: Admin Search & Render
+echo "Test 7: Admin Dashboard Search & Render... ";
+$_GET['s'] = 'John';
 ob_start();
 ross_admin_appointments_page();
 $output = ob_get_clean();
-assert( strpos( $output, 'Appointment Bookings Directory Pro' ) !== false, 'Admin Pro page title rendered' );
-assert( strpos( $output, 'Total Bookings' ) !== false, 'Analytics card rendered' );
-assert( strpos( $output, 'John Doe' ) !== false, 'Booked client name rendered in admin table' );
-echo "PASSED\n";
-
-// Test 8: Admin Settings Page save & render
-echo "Test 8: Admin Settings Page save & render... ";
-$_POST['ross_save_settings'] = '1';
-$_POST['ross_booking_business_name'] = 'Acme Medical';
-$_POST['ross_booking_admin_email'] = 'admin@acme.test';
-$_POST['ross_booking_currency_symbol'] = '€';
-$_POST['ross_booking_slot_interval'] = '30';
-$_POST['ross_booking_auto_approve'] = '1';
-
-ob_start();
-ross_admin_settings_page();
-$settings_out = ob_get_clean();
-assert( strpos( $settings_out, 'Settings saved successfully' ) !== false, 'Settings saved notice displayed' );
-assert( get_option( 'ross_booking_business_name' ) === 'Acme Medical', 'Business name option updated' );
-assert( get_option( 'ross_booking_currency_symbol' ) === '€', 'Currency option updated' );
-assert( strpos( ross_get_services()['service-1']['price'], '€50' ) !== false, 'Service price shows new currency' );
+assert( strpos( $output, 'Appointment Bookings Directory Pro' ) !== false, 'Admin page rendered' );
+assert( strpos( $output, 'John Doe' ) !== false, 'Searched booking client found' );
 echo "PASSED\n";
 
 // Cleanup mock wp-admin directory

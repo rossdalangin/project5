@@ -7,6 +7,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectedSlotInput = document.getElementById('ross-selected-slot');
     const messageContainer = document.getElementById('ross-booking-message');
 
+    // Step badges
+    const step1Badge = document.getElementById('ross-step-1-badge');
+    const step2Badge = document.getElementById('ross-step-2-badge');
+    const step3Badge = document.getElementById('ross-step-3-badge');
+
     if (!serviceSelect || !dateInput) {
         return;
     }
@@ -15,6 +20,23 @@ document.addEventListener('DOMContentLoaded', function () {
     const today = new Date().toISOString().split('T')[0];
     dateInput.setAttribute('min', today);
 
+    // Quick Date Buttons
+    document.querySelectorAll('.ross-quick-date-btn').forEach(btn => {
+        btn.addEventListener('click', function () {
+            const daysOffset = parseInt(this.getAttribute('data-days') || '0', 10);
+            const targetDate = new Date();
+            targetDate.setDate(targetDate.getDate() + daysOffset);
+            dateInput.value = targetDate.toISOString().split('T')[0];
+            fetchAvailableSlots();
+        });
+    });
+
+    function setStep(stepNum) {
+        if (step1Badge) step1Badge.classList.toggle('active', stepNum >= 1);
+        if (step2Badge) step2Badge.classList.toggle('active', stepNum >= 2);
+        if (step3Badge) step3Badge.classList.toggle('active', stepNum >= 3);
+    }
+
     function showMessage(msg, isSuccess = true) {
         messageContainer.style.display = 'block';
         messageContainer.className = isSuccess ? 'ross-message ross-success' : 'ross-message ross-error';
@@ -22,6 +44,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function renderConfirmationCard(data) {
+        setStep(3);
         messageContainer.style.display = 'block';
         messageContainer.className = 'ross-message ross-success ross-confirmation-card';
         messageContainer.textContent = '';
@@ -32,7 +55,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         const desc = document.createElement('p');
         desc.style.margin = '0 0 15px 0';
-        desc.textContent = 'Your booking request has been submitted successfully and is pending approval.';
+        desc.textContent = data.status === 'approved'
+            ? 'Your booking is automatically approved and confirmed!'
+            : 'Your booking request has been submitted successfully and is pending approval.';
 
         const detailsList = document.createElement('ul');
         detailsList.style.listStyle = 'none';
@@ -57,9 +82,25 @@ document.addEventListener('DOMContentLoaded', function () {
             detailsList.appendChild(li);
         });
 
+        // "Book Another Appointment" action button
+        const resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.className = 'ross-quick-date-btn';
+        resetBtn.style.marginTop = '10px';
+        resetBtn.textContent = 'Book Another Appointment';
+        resetBtn.addEventListener('click', function () {
+            serviceSelect.value = '';
+            dateInput.value = '';
+            slotsContainer.style.display = 'none';
+            bookingForm.style.display = 'none';
+            clearMessage();
+            setStep(1);
+        });
+
         messageContainer.appendChild(title);
         messageContainer.appendChild(desc);
         messageContainer.appendChild(detailsList);
+        messageContainer.appendChild(resetBtn);
     }
 
     function clearMessage() {
@@ -74,9 +115,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!serviceId || !bookingDate) {
             slotsContainer.style.display = 'none';
             bookingForm.style.display = 'none';
+            setStep(1);
             return;
         }
 
+        setStep(2);
         clearMessage();
         slotsList.textContent = '';
         const loadingPara = document.createElement('p');
@@ -140,13 +183,20 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.className = 'ross-slot-btn' + (slotObj.available ? '' : ' disabled');
             btn.textContent = slotObj.time_slot;
             btn.disabled = !slotObj.available;
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('aria-label', slotObj.time_slot + (slotObj.available ? ' available' : ' booked'));
 
             if (slotObj.available) {
                 btn.addEventListener('click', function () {
-                    document.querySelectorAll('.ross-slot-btn').forEach(b => b.classList.remove('selected'));
+                    document.querySelectorAll('.ross-slot-btn').forEach(b => {
+                        b.classList.remove('selected');
+                        b.setAttribute('aria-pressed', 'false');
+                    });
                     btn.classList.add('selected');
+                    btn.setAttribute('aria-pressed', 'true');
                     selectedSlotInput.value = slotObj.time_slot;
                     bookingForm.style.display = 'block';
+                    setStep(3);
                     bookingForm.scrollIntoView({ behavior: 'smooth' });
                 });
             }
@@ -170,6 +220,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const timeSlot = selectedSlotInput.value;
             const clientName = document.getElementById('ross-client-name').value.trim();
             const clientEmail = document.getElementById('ross-client-email').value.trim();
+            const honeypotVal = document.getElementById('ross-hp-field') ? document.getElementById('ross-hp-field').value : '';
 
             if (!serviceId || !bookingDate || !timeSlot || !clientName || !clientEmail) {
                 showMessage('Please fill in all fields.', false);
@@ -188,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function () {
             formData.append('time_slot', timeSlot);
             formData.append('client_name', clientName);
             formData.append('client_email', clientEmail);
+            formData.append('ross_hp', honeypotVal);
 
             fetch(rossBookingData.ajax_url, {
                 method: 'POST',
