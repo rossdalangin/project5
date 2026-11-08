@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Appointment Booking & Service Directory Pro
- * Description: A premium, self-contained WordPress appointment booking and service directory plugin with automated notifications, admin settings, analytics, filtering, and CSV export without external SaaS dependencies.
- * Version: 1.4.0
+ * Description: A premium, self-contained WordPress appointment booking and service directory plugin with automated notifications, admin settings, analytics, filtering, and CSV import/export without external SaaS dependencies.
+ * Version: 1.5.0
  * Author: Senior WordPress Full-Stack Engineer
  * Text Domain: appointment-booking-directory
  * Domain Path: /languages
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'ROSS_BOOKING_VERSION', '1.4.0' );
+define( 'ROSS_BOOKING_VERSION', '1.5.0' );
 define( 'ROSS_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ROSS_BOOKING_URL', plugin_dir_url( __FILE__ ) );
 
@@ -197,51 +197,191 @@ function ross_send_booking_email( $type, $booking_id, $client_email, $client_nam
 }
 
 /**
- * CSV Export Handler for Admin
+ * CSV Export & Template Download Handler for Admin
  */
 function ross_export_bookings_csv() {
-	if ( ! isset( $_GET['action'] ) || 'ross_export_csv' !== $_GET['action'] ) {
+	if ( ! isset( $_GET['action'] ) ) {
 		return;
 	}
 
-	if ( ! current_user_can( 'manage_options' ) ) {
-		wp_die( esc_html__( 'Unauthorized access.', 'appointment-booking-directory' ) );
+	if ( 'ross_download_csv_template' === $_GET['action'] ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized access.', 'appointment-booking-directory' ) );
+		}
+		check_admin_referer( 'ross_download_template_nonce' );
+
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=appointment-bookings-template.csv' );
+
+		$output = fopen( 'php://output', 'w' );
+		fputcsv( $output, array( 'service_id', 'booking_date', 'time_slot', 'client_name', 'client_email', 'status' ) );
+		fputcsv( $output, array( 'service-1', date( 'Y-m-d', strtotime( '+1 day' ) ), '09:00 AM', 'Sample Client', 'sample@example.com', 'approved' ) );
+		fclose( $output ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		exit;
 	}
 
-	check_admin_referer( 'ross_export_csv_nonce' );
+	if ( 'ross_export_csv' === $_GET['action'] ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized access.', 'appointment-booking-directory' ) );
+		}
+		check_admin_referer( 'ross_export_csv_nonce' );
 
-	global $wpdb;
-	$table_name = $wpdb->prefix . 'appointment_slots';
-	$bookings   = $wpdb->get_results( "SELECT * FROM {$table_name} ORDER BY created_at DESC" );
-	$services   = ross_get_services();
+		global $wpdb;
+		$table_name = $wpdb->prefix . 'appointment_slots';
+		$bookings   = $wpdb->get_results( "SELECT * FROM {$table_name} ORDER BY created_at DESC" );
+		$services   = ross_get_services();
 
-	header( 'Content-Type: text/csv; charset=utf-8' );
-	header( 'Content-Disposition: attachment; filename=appointment-bookings-' . date( 'Y-m-d' ) . '.csv' );
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=appointment-bookings-' . date( 'Y-m-d' ) . '.csv' );
 
-	$output = fopen( 'php://output', 'w' );
-	fputcsv( $output, array( 'ID', 'Service ID', 'Service Name', 'Booking Date', 'Time Slot', 'Client Name', 'Client Email', 'Status', 'Created At' ) );
+		$output = fopen( 'php://output', 'w' );
+		fputcsv( $output, array( 'ID', 'Service ID', 'Service Name', 'Booking Date', 'Time Slot', 'Client Name', 'Client Email', 'Status', 'Created At' ) );
 
-	if ( ! empty( $bookings ) ) {
-		foreach ( $bookings as $b ) {
-			$service_name = isset( $services[ $b->service_id ] ) ? $services[ $b->service_id ]['name'] : $b->service_id;
-			fputcsv( $output, array(
-				$b->id,
-				$b->service_id,
-				$service_name,
-				$b->booking_date,
-				$b->time_slot,
-				$b->client_name,
-				$b->client_email,
-				$b->status,
-				$b->created_at,
-			) );
+		if ( ! empty( $bookings ) ) {
+			foreach ( $bookings as $b ) {
+				$service_name = isset( $services[ $b->service_id ] ) ? $services[ $b->service_id ]['name'] : $b->service_id;
+				fputcsv( $output, array(
+					$b->id,
+					$b->service_id,
+					$service_name,
+					$b->booking_date,
+					$b->time_slot,
+					$b->client_name,
+					$b->client_email,
+					$b->status,
+					$b->created_at,
+				) );
+			}
+		}
+
+		fclose( $output ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		exit;
+	}
+}
+add_action( 'admin_init', 'ross_export_bookings_csv' );
+
+/**
+ * Process CSV Import
+ */
+function ross_process_csv_import( $file_path ) {
+	if ( ! file_exists( $file_path ) || ! is_readable( $file_path ) ) {
+		return array(
+			'success' => false,
+			'message' => __( 'Could not read uploaded CSV file.', 'appointment-booking-directory' ),
+		);
+	}
+
+	$handle = fopen( $file_path, 'r' ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fopen
+	if ( false === $handle ) {
+		return array(
+			'success' => false,
+			'message' => __( 'Failed to open CSV file.', 'appointment-booking-directory' ),
+		);
+	}
+
+	$header = fgetcsv( $handle );
+	if ( empty( $header ) ) {
+		fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+		return array(
+			'success' => false,
+			'message' => __( 'CSV file is empty.', 'appointment-booking-directory' ),
+		);
+	}
+
+	// Clean headers
+	$header = array_map( function( $h ) {
+		return strtolower( trim( $h ) );
+	}, $header );
+
+	$required_fields = array( 'service_id', 'booking_date', 'time_slot', 'client_name', 'client_email' );
+	foreach ( $required_fields as $rf ) {
+		if ( ! in_array( $rf, $header, true ) ) {
+			fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+			return array(
+				'success' => false,
+				'message' => sprintf( __( 'Missing required column "%s" in CSV header.', 'appointment-booking-directory' ), $rf ),
+			);
 		}
 	}
 
-	fclose( $output ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
-	exit;
+	$service_idx = array_search( 'service_id', $header, true );
+	$date_idx    = array_search( 'booking_date', $header, true );
+	$slot_idx    = array_search( 'time_slot', $header, true );
+	$name_idx    = array_search( 'client_name', $header, true );
+	$email_idx   = array_search( 'client_email', $header, true );
+	$status_idx  = in_array( 'status', $header, true ) ? array_search( 'status', $header, true ) : false;
+
+	global $wpdb;
+	$table_name = $wpdb->prefix . 'appointment_slots';
+	$imported   = 0;
+	$skipped    = 0;
+
+	while ( ( $row = fgetcsv( $handle ) ) !== false ) {
+		if ( empty( $row ) || count( $row ) < count( $required_fields ) ) {
+			continue;
+		}
+
+		$service_id   = sanitize_text_field( trim( $row[ $service_idx ] ?? '' ) );
+		$booking_date = sanitize_text_field( trim( $row[ $date_idx ] ?? '' ) );
+		$time_slot    = sanitize_text_field( trim( $row[ $slot_idx ] ?? '' ) );
+		$client_name  = sanitize_text_field( trim( $row[ $name_idx ] ?? '' ) );
+		$client_email = sanitize_email( trim( $row[ $email_idx ] ?? '' ) );
+		$status       = ( false !== $status_idx && ! empty( $row[ $status_idx ] ) ) ? sanitize_text_field( trim( $row[ $status_idx ] ) ) : 'pending';
+
+		if ( ! in_array( $status, array( 'pending', 'approved', 'cancelled' ), true ) ) {
+			$status = 'pending';
+		}
+
+		if ( empty( $service_id ) || empty( $booking_date ) || empty( $time_slot ) || empty( $client_name ) || ! is_email( $client_email ) ) {
+			$skipped++;
+			continue;
+		}
+
+		// Prevent duplicate active slot booking
+		$exists = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM {$table_name} WHERE service_id = %s AND booking_date = %s AND time_slot = %s AND status != 'cancelled'",
+				$service_id,
+				$booking_date,
+				$time_slot
+			)
+		);
+
+		if ( $exists > 0 ) {
+			$skipped++;
+			continue;
+		}
+
+		$inserted = $wpdb->insert(
+			$table_name,
+			array(
+				'service_id'   => $service_id,
+				'booking_date' => $booking_date,
+				'time_slot'    => $time_slot,
+				'client_name'  => $client_name,
+				'client_email' => $client_email,
+				'status'       => $status,
+				'created_at'   => current_time( 'mysql' ),
+			),
+			array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+		);
+
+		if ( false !== $inserted ) {
+			$imported++;
+		} else {
+			$skipped++;
+		}
+	}
+
+	fclose( $handle ); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_read_fclose
+
+	return array(
+		'success'  => true,
+		'imported' => $imported,
+		'skipped'  => $skipped,
+		'message'  => sprintf( __( 'CSV Import Complete: %d appointments imported, %d rows skipped.', 'appointment-booking-directory' ), $imported, $skipped ),
+	);
 }
-add_action( 'admin_init', 'ross_export_bookings_csv' );
 
 /**
  * Enqueue Frontend Scripts and Styles
@@ -574,8 +714,8 @@ function ross_admin_menu() {
 
 	add_submenu_page(
 		'ross-appointments',
-		__( 'Settings', 'appointment-booking-directory' ),
-		__( 'Settings', 'appointment-booking-directory' ),
+		__( 'Settings & Data', 'appointment-booking-directory' ),
+		__( 'Settings & Data', 'appointment-booking-directory' ),
 		'manage_options',
 		'ross-appointments-settings',
 		'ross_admin_settings_page'
@@ -692,7 +832,10 @@ function ross_admin_appointments_page() {
 	<div class="wrap ross-admin-wrap">
 		<div class="ross-admin-header">
 			<h1><?php esc_html_e( 'Appointment Bookings Directory Pro', 'appointment-booking-directory' ); ?></h1>
-			<a href="<?php echo esc_url( $export_url ); ?>" class="button button-primary"><?php esc_html_e( 'Export to CSV', 'appointment-booking-directory' ); ?></a>
+			<div>
+				<a href="<?php echo esc_url( admin_url( 'admin.php?page=ross-appointments-settings#data-management' ) ); ?>" class="button button-secondary" style="margin-right: 8px;"><?php esc_html_e( 'Import CSV', 'appointment-booking-directory' ); ?></a>
+				<a href="<?php echo esc_url( $export_url ); ?>" class="button button-primary"><?php esc_html_e( 'Export to CSV', 'appointment-booking-directory' ); ?></a>
+			</div>
 		</div>
 
 		<?php echo wp_kses_post( $notice ); ?>
@@ -826,7 +969,7 @@ function ross_admin_appointments_page() {
 }
 
 /**
- * Admin Settings Page Callback
+ * Admin Settings & Data Management Page Callback
  */
 function ross_admin_settings_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
@@ -834,6 +977,8 @@ function ross_admin_settings_page() {
 	}
 
 	$notice = '';
+
+	// Handle Settings Save
 	if ( isset( $_POST['ross_save_settings'] ) ) {
 		check_admin_referer( 'ross_save_settings_nonce' );
 
@@ -852,63 +997,146 @@ function ross_admin_settings_page() {
 		$notice = '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved successfully.', 'appointment-booking-directory' ) . '</p></div>';
 	}
 
+	// Handle CSV Import
+	if ( isset( $_POST['ross_import_csv'] ) ) {
+		check_admin_referer( 'ross_import_csv_nonce' );
+
+		if ( empty( $_FILES['ross_csv_file']['tmp_name'] ) ) {
+			$notice = '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Please select a CSV file to upload.', 'appointment-booking-directory' ) . '</p></div>';
+		} else {
+			$file_ext = strtolower( pathinfo( $_FILES['ross_csv_file']['name'], PATHINFO_EXTENSION ) );
+			if ( 'csv' !== $file_ext ) {
+				$notice = '<div class="notice notice-error is-dismissible"><p>' . esc_html__( 'Invalid file format. Please upload a valid .csv file.', 'appointment-booking-directory' ) . '</p></div>';
+			} else {
+				$import_result = ross_process_csv_import( $_FILES['ross_csv_file']['tmp_name'] );
+				if ( $import_result['success'] ) {
+					$notice = '<div class="notice notice-success is-dismissible"><p>' . esc_html( $import_result['message'] ) . '</p></div>';
+				} else {
+					$notice = '<div class="notice notice-error is-dismissible"><p>' . esc_html( $import_result['message'] ) . '</p></div>';
+				}
+			}
+		}
+	}
+
 	$business_name   = get_option( 'ross_booking_business_name', get_bloginfo( 'name' ) );
 	$admin_email     = get_option( 'ross_booking_admin_email', get_option( 'admin_email' ) );
 	$currency_symbol = get_option( 'ross_booking_currency_symbol', '$' );
 	$slot_interval   = get_option( 'ross_booking_slot_interval', '60' );
 	$auto_approve    = get_option( 'ross_booking_auto_approve', '0' );
 
+	$template_url = wp_nonce_url(
+		add_query_arg(
+			array(
+				'page'   => 'ross-appointments-settings',
+				'action' => 'ross_download_csv_template',
+			),
+			admin_url( 'admin.php' )
+		),
+		'ross_download_template_nonce'
+	);
+
+	$export_url = wp_nonce_url(
+		add_query_arg(
+			array(
+				'page'   => 'ross-appointments',
+				'action' => 'ross_export_csv',
+			),
+			admin_url( 'admin.php' )
+		),
+		'ross_export_csv_nonce'
+	);
+
 	?>
 	<div class="wrap ross-admin-wrap">
 		<div class="ross-admin-header">
-			<h1><?php esc_html_e( 'Appointment Booking Pro Settings', 'appointment-booking-directory' ); ?></h1>
+			<h1><?php esc_html_e( 'Settings & Data Management', 'appointment-booking-directory' ); ?></h1>
 		</div>
 
 		<?php echo wp_kses_post( $notice ); ?>
 
-		<div class="ross-admin-settings-card">
-			<form method="post" action="">
-				<?php wp_nonce_field( 'ross_save_settings_nonce' ); ?>
+		<div style="display: flex; gap: 25px; flex-wrap: wrap;">
+			<!-- Settings Card -->
+			<div class="ross-admin-settings-card" style="flex: 1; min-width: 320px;">
+				<h2><?php esc_html_e( 'General Settings', 'appointment-booking-directory' ); ?></h2>
+				<hr>
+				<form method="post" action="">
+					<?php wp_nonce_field( 'ross_save_settings_nonce' ); ?>
 
-				<div class="ross-settings-group">
-					<label for="ross_booking_business_name"><?php esc_html_e( 'Business / Organization Name', 'appointment-booking-directory' ); ?></label>
-					<input type="text" id="ross_booking_business_name" name="ross_booking_business_name" value="<?php echo esc_attr( $business_name ); ?>" required />
-					<p class="description"><?php esc_html_e( 'Used in outgoing booking email subject lines and client confirmations.', 'appointment-booking-directory' ); ?></p>
-				</div>
+					<div class="ross-settings-group">
+						<label for="ross_booking_business_name"><?php esc_html_e( 'Business / Organization Name', 'appointment-booking-directory' ); ?></label>
+						<input type="text" id="ross_booking_business_name" name="ross_booking_business_name" value="<?php echo esc_attr( $business_name ); ?>" required />
+						<p class="description"><?php esc_html_e( 'Used in outgoing booking email subject lines and client confirmations.', 'appointment-booking-directory' ); ?></p>
+					</div>
 
-				<div class="ross-settings-group">
-					<label for="ross_booking_admin_email"><?php esc_html_e( 'Admin Notification Email', 'appointment-booking-directory' ); ?></label>
-					<input type="email" id="ross_booking_admin_email" name="ross_booking_admin_email" value="<?php echo esc_attr( $admin_email ); ?>" required />
-					<p class="description"><?php esc_html_e( 'Primary administrative email for notification records.', 'appointment-booking-directory' ); ?></p>
-				</div>
+					<div class="ross-settings-group">
+						<label for="ross_booking_admin_email"><?php esc_html_e( 'Admin Notification Email', 'appointment-booking-directory' ); ?></label>
+						<input type="email" id="ross_booking_admin_email" name="ross_booking_admin_email" value="<?php echo esc_attr( $admin_email ); ?>" required />
+						<p class="description"><?php esc_html_e( 'Primary administrative email for notification records.', 'appointment-booking-directory' ); ?></p>
+					</div>
 
-				<div class="ross-settings-group">
-					<label for="ross_booking_currency_symbol"><?php esc_html_e( 'Currency Symbol', 'appointment-booking-directory' ); ?></label>
-					<input type="text" id="ross_booking_currency_symbol" name="ross_booking_currency_symbol" value="<?php echo esc_attr( $currency_symbol ); ?>" style="max-width: 80px;" required />
-					<p class="description"><?php esc_html_e( 'Symbol displayed in directory service prices (e.g. $, €, £, ¥).', 'appointment-booking-directory' ); ?></p>
-				</div>
+					<div class="ross-settings-group">
+						<label for="ross_booking_currency_symbol"><?php esc_html_e( 'Currency Symbol', 'appointment-booking-directory' ); ?></label>
+						<input type="text" id="ross_booking_currency_symbol" name="ross_booking_currency_symbol" value="<?php echo esc_attr( $currency_symbol ); ?>" style="max-width: 80px;" required />
+						<p class="description"><?php esc_html_e( 'Symbol displayed in directory service prices (e.g. $, €, £, ¥).', 'appointment-booking-directory' ); ?></p>
+					</div>
 
-				<div class="ross-settings-group">
-					<label for="ross_booking_slot_interval"><?php esc_html_e( 'Time Slot Interval', 'appointment-booking-directory' ); ?></label>
-					<select id="ross_booking_slot_interval" name="ross_booking_slot_interval">
-						<option value="60" <?php selected( $slot_interval, '60' ); ?>><?php esc_html_e( '60 Minutes (Hourly)', 'appointment-booking-directory' ); ?></option>
-						<option value="30" <?php selected( $slot_interval, '30' ); ?>><?php esc_html_e( '30 Minutes (Half-hourly)', 'appointment-booking-directory' ); ?></option>
-					</select>
-					<p class="description"><?php esc_html_e( 'Controls the available time slots generated on the booking calendar.', 'appointment-booking-directory' ); ?></p>
-				</div>
+					<div class="ross-settings-group">
+						<label for="ross_booking_slot_interval"><?php esc_html_e( 'Time Slot Interval', 'appointment-booking-directory' ); ?></label>
+						<select id="ross_booking_slot_interval" name="ross_booking_slot_interval">
+							<option value="60" <?php selected( $slot_interval, '60' ); ?>><?php esc_html_e( '60 Minutes (Hourly)', 'appointment-booking-directory' ); ?></option>
+							<option value="30" <?php selected( $slot_interval, '30' ); ?>><?php esc_html_e( '30 Minutes (Half-hourly)', 'appointment-booking-directory' ); ?></option>
+						</select>
+						<p class="description"><?php esc_html_e( 'Controls the available time slots generated on the booking calendar.', 'appointment-booking-directory' ); ?></p>
+					</div>
 
-				<div class="ross-settings-group">
-					<label>
-						<input type="checkbox" name="ross_booking_auto_approve" value="1" <?php checked( $auto_approve, '1' ); ?> />
-						<?php esc_html_e( 'Automatically Approve New Bookings', 'appointment-booking-directory' ); ?>
-					</label>
-					<p class="description"><?php esc_html_e( 'If enabled, new bookings are automatically confirmed without needing manual admin approval.', 'appointment-booking-directory' ); ?></p>
-				</div>
+					<div class="ross-settings-group">
+						<label>
+							<input type="checkbox" name="ross_booking_auto_approve" value="1" <?php checked( $auto_approve, '1' ); ?> />
+							<?php esc_html_e( 'Automatically Approve New Bookings', 'appointment-booking-directory' ); ?>
+						</label>
+						<p class="description"><?php esc_html_e( 'If enabled, new bookings are automatically confirmed without needing manual admin approval.', 'appointment-booking-directory' ); ?></p>
+					</div>
 
-				<p class="submit">
-					<input type="submit" name="ross_save_settings" class="button button-primary" value="<?php esc_attr_e( 'Save Settings', 'appointment-booking-directory' ); ?>" />
+					<p class="submit">
+						<input type="submit" name="ross_save_settings" class="button button-primary" value="<?php esc_attr_e( 'Save Settings', 'appointment-booking-directory' ); ?>" />
+					</p>
+				</form>
+			</div>
+
+			<!-- Data Management Card -->
+			<div id="data-management" class="ross-admin-settings-card" style="flex: 1; min-width: 320px;">
+				<h2><?php esc_html_e( 'Data Management (Import / Export)', 'appointment-booking-directory' ); ?></h2>
+				<hr>
+
+				<h3><?php esc_html_e( 'Export Appointments', 'appointment-booking-directory' ); ?></h3>
+				<p><?php esc_html_e( 'Download a complete spreadsheet of all booked appointments in CSV format for reporting or backup.', 'appointment-booking-directory' ); ?></p>
+				<p>
+					<a href="<?php echo esc_url( $export_url ); ?>" class="button button-primary"><?php esc_html_e( 'Export All Bookings to CSV', 'appointment-booking-directory' ); ?></a>
 				</p>
-			</form>
+
+				<hr style="margin: 25px 0;">
+
+				<h3><?php esc_html_e( 'Import Appointments via CSV', 'appointment-booking-directory' ); ?></h3>
+				<p><?php esc_html_e( 'Bulk import appointment bookings from a spreadsheet or external calendar.', 'appointment-booking-directory' ); ?></p>
+
+				<p style="margin-bottom: 15px;">
+					<a href="<?php echo esc_url( $template_url ); ?>" class="button button-secondary"><?php esc_html_e( 'Download Sample CSV Template', 'appointment-booking-directory' ); ?></a>
+				</p>
+
+				<form method="post" action="" enctype="multipart/form-data">
+					<?php wp_nonce_field( 'ross_import_csv_nonce' ); ?>
+
+					<div class="ross-settings-group">
+						<label for="ross_csv_file"><?php esc_html_e( 'Choose CSV File to Import', 'appointment-booking-directory' ); ?></label>
+						<input type="file" id="ross_csv_file" name="ross_csv_file" accept=".csv" required />
+						<p class="description"><?php esc_html_e( 'Required columns: service_id, booking_date (YYYY-MM-DD), time_slot, client_name, client_email. Optional column: status.', 'appointment-booking-directory' ); ?></p>
+					</div>
+
+					<p class="submit">
+						<input type="submit" name="ross_import_csv" class="button button-primary" value="<?php esc_attr_e( 'Upload and Import CSV', 'appointment-booking-directory' ); ?>" />
+					</p>
+				</form>
+			</div>
 		</div>
 	</div>
 	<?php

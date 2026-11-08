@@ -69,6 +69,15 @@ class MockWPDB {
 				foreach ( $this->rows as $r ) { if ( $r['status'] === 'approved' ) $cnt++; }
 				return $cnt;
 			}
+			if ( strpos( $query, 'time_slot =' ) !== false ) {
+				// Slot duplication check
+				foreach ( $this->rows as $r ) {
+					if ( strpos( $query, $r['time_slot'] ) !== false && strpos( $query, $r['booking_date'] ) !== false && strpos( $query, $r['service_id'] ) !== false && $r['status'] !== 'cancelled' ) {
+						return 1;
+					}
+				}
+				return 0;
+			}
 			if ( strpos( $query, 'booking_date =' ) !== false ) {
 				$cnt = 0;
 				foreach ( $this->rows as $r ) { if ( $r['booking_date'] === date('Y-m-d') ) $cnt++; }
@@ -400,14 +409,30 @@ $filtered_slots = ross_get_default_time_slots();
 assert( in_array( '06:00 PM', $filtered_slots, true ), 'Custom slot added via filter hook' );
 echo "PASSED\n";
 
-// Test 7: Admin Dashboard Search & Render
-echo "Test 7: Admin Dashboard Search & Render... ";
-$_GET['s'] = 'John';
+// Test 7: CSV Process Import
+echo "Test 7: CSV Process Import... ";
+$temp_csv = tempnam( sys_get_temp_dir(), 'csv_import_' );
+$csv_content = "service_id,booking_date,time_slot,client_name,client_email,status\n"
+             . "service-2,2026-12-01,11:00 AM,Alice Wonderland,alice@example.com,approved\n"
+             . "service-3,2026-12-01,02:00 PM,Bob Builder,bob@example.com,pending\n"
+             . "service-1,2026-12-01,invalid_slot_skipped\n"; // Skipped row
+file_put_contents( $temp_csv, $csv_content );
+
+$res = ross_process_csv_import( $temp_csv );
+assert( $res['success'] === true, 'CSV import reported success' );
+assert( $res['imported'] === 2, 'Imported 2 valid rows' );
+assert( $res['skipped'] === 1, 'Skipped 1 incomplete row' );
+unlink( $temp_csv );
+echo "PASSED\n";
+
+// Test 8: Admin Dashboard Search & Render
+echo "Test 8: Admin Dashboard Search & Render... ";
+$_GET['s'] = 'Alice';
 ob_start();
 ross_admin_appointments_page();
 $output = ob_get_clean();
 assert( strpos( $output, 'Appointment Bookings Directory Pro' ) !== false, 'Admin page rendered' );
-assert( strpos( $output, 'John Doe' ) !== false, 'Searched booking client found' );
+assert( strpos( $output, 'Alice Wonderland' ) !== false, 'Searched imported booking found' );
 echo "PASSED\n";
 
 // Cleanup mock wp-admin directory

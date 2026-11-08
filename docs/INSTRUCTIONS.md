@@ -21,20 +21,21 @@
 
 After activation, confirm the following items:
 - [ ] Custom table created: Verify that `{$wpdb->prefix}appointment_slots` exists in the database.
-- [ ] Admin menu visible: Confirm **Appointments** appears in the left WordPress admin sidebar with sub-menus **Manage Bookings** and **Settings**.
-- [ ] Default settings populated: Visit **Appointments -> Settings** and confirm business name, admin email, and currency symbol are populated with your site defaults.
+- [ ] Admin menu visible: Confirm **Appointments** appears in the left WordPress admin sidebar with sub-menus **Manage Bookings** and **Settings & Data**.
+- [ ] Default settings populated: Visit **Appointments -> Settings & Data** and confirm business name, admin email, and currency symbol are populated with your site defaults.
 
 ---
 
-## 3. Configuration Walkthrough
+## 3. Configuration & Data Management Walkthrough
 
-1. Go to **Appointments -> Settings**.
+1. Go to **Appointments -> Settings & Data**.
 2. **Business / Organization Name:** Enter the public name of your business or practice (e.g., "Apex Dental Clinic"). This name is used in all client notifications.
 3. **Admin Notification Email:** Provide the operational email where booking notifications should be received.
 4. **Currency Symbol:** Specify your local currency symbol ($, €, £, etc.).
 5. **Time Slot Interval:** Choose either `60 Minutes` or `30 Minutes` depending on your typical service session length.
 6. **Auto-Approval:** Check this box if you want bookings automatically confirmed upon submission. Leave unchecked if bookings require manual confirmation by staff.
-7. Click **Save Settings**.
+7. **CSV Data Export:** Click **Export All Bookings to CSV** to download existing appointments.
+8. **CSV Data Import:** Download the sample CSV template, populate with booking records, and upload to bulk-import appointments.
 
 ---
 
@@ -61,6 +62,9 @@ You can place the appointment booking interface on any page or post.
 
 ### Q: Why do slots not load when selecting a date?
 - **A:** Ensure the date selected is today or a future date. Past dates are blocked by security validation. Check your browser console to verify `admin-ajax.php` is reachable and returns HTTP 200.
+
+### Q: What format must the CSV import file have?
+- **A:** The CSV header must contain: `service_id,booking_date,time_slot,client_name,client_email`. Dates must be formatted `YYYY-MM-DD`. An optional `status` column may be included.
 
 ### Q: Why are email notifications not being received?
 - **A:** The plugin uses WordPress's native `wp_mail()` function. If your web host disables PHP `mail()`, install an SMTP plugin (such as WP Mail SMTP) to route emails through your company's transactional mail provider.

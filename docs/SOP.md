@@ -33,28 +33,34 @@ Rapidly locate client bookings when customers call or email for modifications or
 
 ---
 
-## SOP-003: Weekly CSV Export and Reporting
+## SOP-003: Weekly CSV Export, Backup & Import
 
 ### Purpose
-Export operational booking data for external accounting, scheduling integration, and management reporting.
+Export operational booking data for external accounting, scheduling integration, or bulk importing historical client appointments.
 
-### Procedure
+### Export Procedure
 1. Log in to WordPress Admin.
-2. Navigate to **Appointments -> Manage Bookings**.
-3. Click the blue **Export to CSV** button in the top right header.
+2. Navigate to **Appointments -> Manage Bookings** or **Appointments -> Settings & Data**.
+3. Click the blue **Export to CSV** button.
 4. The system will download a file named `appointment-bookings-YYYY-MM-DD.csv`.
 5. Open the CSV file in Excel, Google Sheets, or import into your CRM/accounting software.
-6. Verify record counts match the **Total Bookings** metric on the dashboard.
+
+### Import Procedure
+1. Navigate to **Appointments -> Settings & Data**.
+2. Under **Data Management**, click **Download Sample CSV Template** to review the expected column schema (`service_id`, `booking_date`, `time_slot`, `client_name`, `client_email`, `status`).
+3. Prepare your spreadsheet matching the required headers. Dates must follow `YYYY-MM-DD`.
+4. Choose the file in the upload field and click **Upload and Import CSV**.
+5. Check the system notice for the number of imported vs. skipped rows. Conflicting/duplicate active time slots are automatically skipped to prevent double booking.
 
 ---
 
-## SOP-004: Managing Slot Intervals & Holiday Schedules
+## SOP-004: Managing Slot Intervals & Auto-Approval
 
 ### Purpose
 Adjust appointment duration, slot frequency, or currency as business requirements evolve.
 
 ### Procedure
-1. Navigate to **Appointments -> Settings**.
+1. Navigate to **Appointments -> Settings & Data**.
 2. To offer more frequent appointment times (e.g., during busy holiday seasons), adjust **Time Slot Interval** from `60 Minutes (Hourly)` to `30 Minutes (Half-hourly)`.
 3. If staff are managing real-time schedules outside of WordPress and cannot review each submission manually, enable **Automatically Approve New Bookings**.
 4. Click **Save Settings**.

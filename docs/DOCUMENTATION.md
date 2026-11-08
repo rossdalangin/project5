@@ -13,10 +13,11 @@
 ## 2. Architectural Overview
 
 The plugin follows standard WordPress plugin architecture:
-- `appointment-booking-directory.php`: Central orchestrator containing hooks, table activation logic, REST/AJAX endpoints, options handling, and admin page callbacks.
+- `appointment-booking-directory.php`: Central orchestrator containing hooks, table activation logic, REST/AJAX endpoints, options handling, CSV import/export engines, and admin page callbacks.
 - `assets/css/frontend.css`: Scoped frontend styling for appointment booking widgets, step indicators, time slot pills, and confirmation cards.
-- `assets/css/admin.css`: Native WP Admin styling enhancing dashboard metrics, filter toolbars, status chips, and settings forms.
+- `assets/css/admin.css`: Native WP Admin styling enhancing dashboard metrics, filter toolbars, status chips, data management cards, and settings forms.
 - `assets/js/frontend.js`: Pure vanilla JavaScript (ES6) utilizing `fetch()` to handle AJAX requests without external JS library dependencies.
+- `uninstall.php`: Dedicated database cleanup file executing when the plugin is deleted via the WordPress admin interface.
 
 ---
 
@@ -110,11 +111,13 @@ The shortcode renders a 3-step responsive form:
 
 ---
 
-## 6. WP Admin Settings Configuration
+## 6. WP Admin Settings & Data Management
 
-Access via **Appointments -> Settings**:
+Access via **Appointments -> Settings & Data**:
 1. **Business Name:** Used across customer notification emails and receipts.
 2. **Admin Notification Email:** Administrative address receiving appointment alerts.
-3. **Currency Symbol:** Configurable currency symbol ($, €, £, ¥, etc.) shown in directory prices.
+3. **Currency Symbol:** Configurable currency symbol ($, €, £, ¥, etc.) shown in directory service prices.
 4. **Time Slot Interval:** Choose between 60 minutes (hourly) or 30 minutes (half-hourly).
 5. **Auto-Approval:** Toggle whether bookings are automatically approved upon submission.
+6. **CSV Export:** Download full appointment spreadsheet with one click.
+7. **CSV Import:** Bulk import appointment records from any spreadsheet with validation, duplicate detection, and sample template download.
