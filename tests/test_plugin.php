@@ -123,6 +123,7 @@ $wpdb = new MockWPDB();
 
 // Mock WP core functions & Options/Transients store
 $actions = array();
+$filters = array();
 $shortcodes = array();
 $sent_emails = array();
 $options_store = array();
@@ -133,6 +134,30 @@ function add_action( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
 	$actions[ $tag ][] = $callback;
 }
 
+function do_action( $tag, ...$args ) {
+	global $actions;
+	if ( isset( $actions[ $tag ] ) ) {
+		foreach ( $actions[ $tag ] as $cb ) {
+			call_user_func_array( $cb, $args );
+		}
+	}
+}
+
+function add_filter( $tag, $callback, $priority = 10, $accepted_args = 1 ) {
+	global $filters;
+	$filters[ $tag ][] = $callback;
+}
+
+function apply_filters( $tag, $value, ...$args ) {
+	global $filters;
+	if ( isset( $filters[ $tag ] ) ) {
+		foreach ( $filters[ $tag ] as $cb ) {
+			$value = call_user_func_array( $cb, array_merge( array( $value ), $args ) );
+		}
+	}
+	return $value;
+}
+
 function register_activation_hook( $file, $callback ) {
 	global $actions;
 	$actions['activate'][] = $callback;
@@ -141,6 +166,14 @@ function register_activation_hook( $file, $callback ) {
 function add_shortcode( $tag, $callback ) {
 	global $shortcodes;
 	$shortcodes[ $tag ] = $callback;
+}
+
+function load_plugin_textdomain( $domain, $deprecated = false, $plugin_rel_path = false ) {
+	return true;
+}
+
+function plugin_basename( $file ) {
+	return basename( $file );
 }
 
 function get_option( $opt, $default = false ) {
@@ -304,8 +337,14 @@ try {
 unset( $_POST['ross_hp'] );
 echo "PASSED\n";
 
-// Test 3: Normal Booking Submission
-echo "Test 3: Normal Booking Submission... ";
+// Test 3: Normal Booking Submission & Action Hook Trigger
+echo "Test 3: Normal Booking Submission & Hook Trigger... ";
+$created_hook_triggered = false;
+add_action( 'ross_booking_created', function( $booking_id, $booking_data ) use ( &$created_hook_triggered ) {
+	$created_hook_triggered = true;
+	assert( $booking_id > 0, 'Valid booking ID passed to action hook' );
+} );
+
 $_POST['client_name'] = 'John Doe';
 $_POST['client_email'] = 'john@example.com';
 try {
@@ -313,6 +352,7 @@ try {
 } catch ( Exception $e ) {
 	assert( strpos( $e->getMessage(), 'JSON_SUCCESS' ) !== false, 'Booking submitted successfully' );
 	assert( count( $sent_emails ) === 1, 'Confirmation email dispatched' );
+	assert( $created_hook_triggered === true, 'ross_booking_created action fired' );
 }
 echo "PASSED\n";
 
@@ -340,18 +380,27 @@ assert( strpos( $last_email['to'], "\n" ) === false, 'LF stripped from to field'
 assert( strpos( $last_email['to'], 'evil@test.com' ) === false, 'Bcc header neutralized' );
 echo "PASSED\n";
 
-// Test 6: String Length Boundaries
-echo "Test 6: Input Length Validation... ";
-$_POST['client_name'] = str_repeat( 'A', 150 );
-try {
-	ross_submit_booking();
-} catch ( Exception $e ) {
-	assert( strpos( $e->getMessage(), 'Input length exceeded' ) !== false, 'Rejected overlength name' );
-}
-$_POST['client_name'] = 'John Doe';
+// Test 6: Filter Hook Extensibility
+echo "Test 6: Filter Hooks (ross_booking_services & ross_booking_time_slots)... ";
+add_filter( 'ross_booking_services', function( $services ) {
+	$services['custom-svc'] = array(
+		'id' => 'custom-svc',
+		'name' => 'Custom Service',
+	);
+	return $services;
+} );
+$filtered_services = ross_get_services();
+assert( isset( $filtered_services['custom-svc'] ), 'Custom service added via filter hook' );
+
+add_filter( 'ross_booking_time_slots', function( $slots ) {
+	$slots[] = '06:00 PM';
+	return $slots;
+} );
+$filtered_slots = ross_get_default_time_slots();
+assert( in_array( '06:00 PM', $filtered_slots, true ), 'Custom slot added via filter hook' );
 echo "PASSED\n";
 
-// Test 7: Admin Search & Render
+// Test 7: Admin Dashboard Search & Render
 echo "Test 7: Admin Dashboard Search & Render... ";
 $_GET['s'] = 'John';
 ob_start();

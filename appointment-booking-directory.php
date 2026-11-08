@@ -2,18 +2,27 @@
 /**
  * Plugin Name: Appointment Booking & Service Directory Pro
  * Description: A premium, self-contained WordPress appointment booking and service directory plugin with automated notifications, admin settings, analytics, filtering, and CSV export without external SaaS dependencies.
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: Senior WordPress Full-Stack Engineer
  * Text Domain: appointment-booking-directory
+ * Domain Path: /languages
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly.
 }
 
-define( 'ROSS_BOOKING_VERSION', '1.3.0' );
+define( 'ROSS_BOOKING_VERSION', '1.4.0' );
 define( 'ROSS_BOOKING_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ROSS_BOOKING_URL', plugin_dir_url( __FILE__ ) );
+
+/**
+ * Load Internationalization Text Domain
+ */
+function ross_booking_load_textdomain() {
+	load_plugin_textdomain( 'appointment-booking-directory', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+}
+add_action( 'init', 'ross_booking_load_textdomain' );
 
 /**
  * Activation Hook: Create Custom Database Table
@@ -59,13 +68,13 @@ function ross_booking_activate() {
 register_activation_hook( __FILE__, 'ross_booking_activate' );
 
 /**
- * Get Configured Time Slots Based on Settings
+ * Get Configured Time Slots Based on Settings (Filterable)
  */
 function ross_get_default_time_slots() {
 	$interval = get_option( 'ross_booking_slot_interval', '60' );
 
 	if ( '30' === $interval ) {
-		return array(
+		$slots = array(
 			'09:00 AM',
 			'09:30 AM',
 			'10:00 AM',
@@ -81,25 +90,27 @@ function ross_get_default_time_slots() {
 			'04:00 PM',
 			'04:30 PM',
 		);
+	} else {
+		$slots = array(
+			'09:00 AM',
+			'10:00 AM',
+			'11:00 AM',
+			'01:00 PM',
+			'02:00 PM',
+			'03:00 PM',
+			'04:00 PM',
+		);
 	}
 
-	return array(
-		'09:00 AM',
-		'10:00 AM',
-		'11:00 AM',
-		'01:00 PM',
-		'02:00 PM',
-		'03:00 PM',
-		'04:00 PM',
-	);
+	return apply_filters( 'ross_booking_time_slots', $slots, $interval );
 }
 
 /**
- * Premium Services Directory List with Metadata
+ * Premium Services Directory List with Metadata (Filterable)
  */
 function ross_get_services() {
 	$curr = get_option( 'ross_booking_currency_symbol', '$' );
-	return array(
+	$services = array(
 		'service-1' => array(
 			'id'          => 'service-1',
 			'name'        => 'General Consultation',
@@ -125,6 +136,8 @@ function ross_get_services() {
 			'description' => 'One-on-one deep dive strategy session tailored to your needs.',
 		),
 	);
+
+	return apply_filters( 'ross_booking_services', $services );
 }
 
 /**
@@ -490,17 +503,19 @@ function ross_submit_booking() {
 	$auto_approve   = get_option( 'ross_booking_auto_approve', '0' );
 	$initial_status = ( '1' === $auto_approve ) ? 'approved' : 'pending';
 
+	$booking_data = array(
+		'service_id'   => $service_id,
+		'booking_date' => $booking_date,
+		'time_slot'    => $time_slot,
+		'client_name'  => $client_name,
+		'client_email' => $client_email,
+		'status'       => $initial_status,
+		'created_at'   => current_time( 'mysql' ),
+	);
+
 	$inserted = $wpdb->insert(
 		$table_name,
-		array(
-			'service_id'   => $service_id,
-			'booking_date' => $booking_date,
-			'time_slot'    => $time_slot,
-			'client_name'  => $client_name,
-			'client_email' => $client_email,
-			'status'       => $initial_status,
-			'created_at'   => current_time( 'mysql' ),
-		),
+		$booking_data,
 		array( '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
 	);
 
@@ -513,6 +528,9 @@ function ross_submit_booking() {
 
 	$booking_id   = $wpdb->insert_id;
 	$service_name = $services[ $service_id ]['name'];
+
+	// Action hook for developer integration (e.g. webhooks, CRM sync)
+	do_action( 'ross_booking_created', $booking_id, $booking_data );
 
 	// Dispatch email notification
 	$notification_type = ( 'approved' === $initial_status ) ? 'approved' : 'new_booking';
@@ -598,6 +616,7 @@ function ross_admin_appointments_page() {
 						array( '%d' )
 					);
 					if ( false !== $updated ) {
+						do_action( 'ross_booking_status_changed', $booking_id, 'approved', $existing_booking );
 						ross_send_booking_email( 'approved', $booking_id, $existing_booking->client_email, $existing_booking->client_name, $service_name, $existing_booking->booking_date, $existing_booking->time_slot );
 						$notice = '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Booking approved successfully and notification email sent.', 'appointment-booking-directory' ) . '</p></div>';
 					}
@@ -610,6 +629,7 @@ function ross_admin_appointments_page() {
 						array( '%d' )
 					);
 					if ( false !== $updated ) {
+						do_action( 'ross_booking_status_changed', $booking_id, 'cancelled', $existing_booking );
 						ross_send_booking_email( 'cancelled', $booking_id, $existing_booking->client_email, $existing_booking->client_name, $service_name, $existing_booking->booking_date, $existing_booking->time_slot );
 						$notice = '<div class="notice notice-warning is-dismissible"><p>' . esc_html__( 'Booking cancelled successfully and notification email sent.', 'appointment-booking-directory' ) . '</p></div>';
 					}

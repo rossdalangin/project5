@@ -1,0 +1,28 @@
+name: Bug Report
+description: File a bug report for Appointment Booking Pro
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting an issue! Please describe the problem below.
+  - type: input
+    id: version
+    attributes:
+      label: Plugin & WordPress Version
+      placeholder: e.g., Plugin v1.4.0, WordPress 6.4, PHP 8.2
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      placeholder: Describe what happened and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      placeholder: 1. Go to...\n2. Click on...\n3. See error
+    validations:
+      required: true
